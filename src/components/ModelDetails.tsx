@@ -1,18 +1,19 @@
 import type { SelectOption, ScrollBoxRenderable } from "@opentui/core";
 import { useFocusState } from "@/hooks/FocusProvider";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useKeyboard } from "@opentui/react";
 import { theme } from "@/theme";
 import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
+import { ConfirmModal } from "./ConfirmModal";
 
 export type ModelDetailsProps = {
     model: SelectOption;
-    onSave: (model: SelectOption) => void;
+    onSave: (model: SelectOption, originalName?: string) => void;
 }
 
 export function ModelDetails({ model, onSave }: ModelDetailsProps) {
-    const { editMode, setEditMode, isFocused, setFocusedId, focusedId } = useFocusState("model_details");
+    const { editMode, setEditMode, isFocused, setFocusedId, focusedId, setModalOpen, setExitGuard, clearExitGuard } = useFocusState("model_details");
     const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 
     const [modelName, setModelName] = useState(model.name);
@@ -25,6 +26,77 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     const [anthropicDefaultOpusModel, setAnthropicDefaultOpusModel] = useState(model.value.ANTHROPIC_DEFAULT_OPUS_MODEL);
     const [anthropicDefaultHaikuModel, setAnthropicDefaultHaikuModel] = useState(model.value.ANTHROPIC_DEFAULT_HAIKU_MODEL);
     const [activeFieldIndex, setActiveFieldIndex] = useState(0);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
+    const isDirty = useMemo(() => {
+        return (
+            modelName !== model.name ||
+            modelDescription !== model.description ||
+            anthropicBaseUrl !== model.value.ANTHROPIC_BASE_URL ||
+            anthropicAuthToken !== model.value.ANTHROPIC_AUTH_TOKEN ||
+            anthropicModel !== model.value.ANTHROPIC_MODEL ||
+            anthropicSmallFastModel !== model.value.ANTHROPIC_SMALL_FAST_MODEL ||
+            anthropicDefaultSonnetModel !== model.value.ANTHROPIC_DEFAULT_SONNET_MODEL ||
+            anthropicDefaultOpusModel !== model.value.ANTHROPIC_DEFAULT_OPUS_MODEL ||
+            anthropicDefaultHaikuModel !== model.value.ANTHROPIC_DEFAULT_HAIKU_MODEL
+        );
+    }, [
+        modelName,
+        modelDescription,
+        anthropicBaseUrl,
+        anthropicAuthToken,
+        anthropicModel,
+        anthropicSmallFastModel,
+        anthropicDefaultSonnetModel,
+        anthropicDefaultOpusModel,
+        anthropicDefaultHaikuModel,
+        model,
+    ]);
+
+    const openConfirm = useCallback(() => {
+        setIsConfirmOpen(true);
+        setModalOpen(true);
+    }, [setModalOpen]);
+
+    const closeConfirm = useCallback(() => {
+        setIsConfirmOpen(false);
+        setModalOpen(false);
+    }, [setModalOpen]);
+
+    const handleSave = useCallback(() => {
+        // Pass the original model.name so the save function knows which entry to update
+        onSave({
+            ...model,
+            name: modelName,
+            description: modelDescription,
+            value: {
+                ...model.value,
+                ANTHROPIC_BASE_URL: anthropicBaseUrl,
+                ANTHROPIC_AUTH_TOKEN: anthropicAuthToken,
+                ANTHROPIC_MODEL: anthropicModel,
+                ANTHROPIC_SMALL_FAST_MODEL: anthropicSmallFastModel,
+                ANTHROPIC_DEFAULT_SONNET_MODEL: anthropicDefaultSonnetModel,
+                ANTHROPIC_DEFAULT_OPUS_MODEL: anthropicDefaultOpusModel,
+                ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropicDefaultHaikuModel,
+            },
+        }, model.name);
+        setEditMode(false);
+        setFocusedId('model_selection');
+    }, [
+        onSave,
+        model,
+        modelName,
+        modelDescription,
+        anthropicBaseUrl,
+        anthropicAuthToken,
+        anthropicModel,
+        anthropicSmallFastModel,
+        anthropicDefaultSonnetModel,
+        anthropicDefaultOpusModel,
+        anthropicDefaultHaikuModel,
+        setEditMode,
+        setFocusedId,
+    ]);
     
     // Keep local state in sync when model changes
     useEffect(() => {
@@ -46,7 +118,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     }, [editMode]);
 
     useKeyboard((key) => {
-        if (!isFocused) return;
+        if (!isFocused || isConfirmOpen) return;
 
         if (editMode) {
             // In edit mode, arrow keys navigate between fields
@@ -59,21 +131,10 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
             }
 
             if (key.name === 'return') {
-                onSave({
-                    ...model,
-                    name: modelName,
-                    description: modelDescription,
-                    value: {
-                        ...model.value,
-                        ANTHROPIC_BASE_URL: anthropicBaseUrl,
-                        ANTHROPIC_AUTH_TOKEN: anthropicAuthToken,
-                        ANTHROPIC_MODEL: anthropicModel,
-                        ANTHROPIC_SMALL_FAST_MODEL: anthropicSmallFastModel,
-                        ANTHROPIC_DEFAULT_SONNET_MODEL: anthropicDefaultSonnetModel,
-                        ANTHROPIC_DEFAULT_OPUS_MODEL: anthropicDefaultOpusModel,
-                        ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropicDefaultHaikuModel,
-                    }
-                });
+                if (isDirty) {
+                    openConfirm();
+                    return;
+                }
                 setEditMode(false);
                 setFocusedId('model_selection');
             }
@@ -87,13 +148,29 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
         }
     });
 
+    useEffect(() => {
+        setExitGuard("model_details", (key) => {
+            if (isConfirmOpen) {
+                return true;
+            }
+            if (!editMode || !isDirty) return false;
+            if (key.name === "escape" || key.name === "tab" || key.name === "left") {
+                openConfirm();
+                return true;
+            }
+            return false;
+        });
+
+        return () => clearExitGuard("model_details");
+    }, [clearExitGuard, editMode, isConfirmOpen, isDirty, openConfirm, setExitGuard]);
+
     if (focusedId !== 'model_details' && focusedId !== 'model_selection') {
         return null;
     }
 
     const isActive = isFocused;
 
-    return (
+    return (<>
         <scrollbox
             ref={scrollboxRef}
             title={editMode ? `Editing: ${model.name}` : "Model Details"}
@@ -238,5 +315,18 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                 )}
             </box>
         </scrollbox>
+        <ConfirmModal
+            isOpen={isConfirmOpen}
+            title="Save changes?"
+            message="Do you want to save your updates?"
+            confirmLabel="Save"
+            cancelLabel="Cancel"
+            onConfirm={() => {
+                handleSave();
+                closeConfirm();
+            }}
+            onCancel={closeConfirm}
+        />
+    </>
     );
 }
