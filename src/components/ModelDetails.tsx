@@ -15,6 +15,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     const { editMode, setEditMode, isFocused, setFocusedId, focusedId } = useFocusState("model_details");
     const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 
+    const [modelName, setModelName] = useState(model.name);
+    const [modelDescription, setModelDescription] = useState(model.description);
     const [anthropicBaseUrl, setAnthropicBaseUrl] = useState(model.value.ANTHROPIC_BASE_URL);
     const [anthropicAuthToken, setAnthropicAuthToken] = useState(model.value.ANTHROPIC_AUTH_TOKEN);
     const [anthropicModel, setAnthropicModel] = useState(model.value.ANTHROPIC_MODEL);
@@ -26,6 +28,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     
     // Keep local state in sync when model changes
     useEffect(() => {
+        setModelName(model.name);
+        setModelDescription(model.description);
         setAnthropicBaseUrl(model.value.ANTHROPIC_BASE_URL);
         setAnthropicAuthToken(model.value.ANTHROPIC_AUTH_TOKEN);
         setAnthropicModel(model.value.ANTHROPIC_MODEL);
@@ -57,6 +61,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
             if (key.name === 'return') {
                 onSave({
                     ...model,
+                    name: modelName,
+                    description: modelDescription,
                     value: {
                         ...model.value,
                         ANTHROPIC_BASE_URL: anthropicBaseUrl,
@@ -117,10 +123,10 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                         attributes={TextAttributes.BOLD} 
                         style={{ fg: theme.colors.text.primary }}
                     >
-                        {model.name}
+                        {modelName}
                     </text>
                     <text style={{ fg: theme.colors.text.secondary }}>
-                        {model.description}
+                        {modelDescription}
                     </text>
                 </box>
 
@@ -135,18 +141,18 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                     
                     <FormField 
                         label="Name" 
-                        value={model.name} 
+                        value={modelName} 
                         isFocused={isActive && editMode && activeFieldIndex === 0}
                         editMode={editMode}
-                        onChange={(val) => model.name = val}
+                        onChange={setModelName}
                     />
                     
                     <FormField 
                         label="Description" 
-                        value={model.description} 
+                        value={modelDescription} 
                         isFocused={isActive && editMode && activeFieldIndex === 1}
                         editMode={editMode}
-                        onChange={(val) => model.description = val}
+                        onChange={setModelDescription}
                     />
                 </box>
 
@@ -221,6 +227,15 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                         placeholder="e.g. claude-3-haiku-20240307"
                     />
                 </box>
+
+                {/* Footer hints - only show in edit mode */}
+                {editMode && (
+                    <box marginTop={1} paddingTop={1}>
+                        <text style={{ fg: theme.colors.text.muted }}>
+                            [Enter] Save   [Esc] Cancel   [Ctrl+C] Copy   [Ctrl+V] Paste
+                        </text>
+                    </box>
+                )}
             </box>
         </scrollbox>
     );
