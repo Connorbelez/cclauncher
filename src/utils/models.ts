@@ -85,9 +85,9 @@ export const saveModelToFile = (
   }
 
   const { order: incomingOrder, ...restModel } = model;
-  const existing = models[targetName] ?? {};
+  const existing: (SelectOption & { order?: number }) | undefined = models[targetName];
   const nextModel: SelectOption & { order?: number } = {
-    ...existing,
+    ...(existing ?? {}),
     ...restModel,
   };
 
@@ -95,9 +95,9 @@ export const saveModelToFile = (
     nextModel.order = incomingOrder;
   } else if (setOrderIfMissing) {
     const existingOrder =
-      typeof existing.order === "number" && Number.isFinite(existing.order) ? existing.order : null;
+      typeof existing?.order === "number" && Number.isFinite(existing.order) ? existing.order : null;
     nextModel.order = existingOrder ?? getNextModelOrder(models);
-  } else if (typeof existing.order === "number") {
+  } else if (typeof existing?.order === "number") {
     nextModel.order = existing.order;
   }
 

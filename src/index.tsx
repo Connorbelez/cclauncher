@@ -1,47 +1,132 @@
 import { createCliRenderer, TextAttributes, type SelectOption } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { useRenderer } from "@opentui/react"
+import { useRenderer } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FocusProvider, useFocusContext } from "./hooks/FocusProvider";
 import { ModelSelection } from "./components/ModelSelection";
 import { ModelDetails } from "./components/ModelDetails";
-import modelsJson from "./models.json";
-import { z } from "zod";
-import fs from "fs";
 import { NewModelForm } from "./components/NewModelForm";
 import { theme } from "./theme";
-import { saveModelToFile, type SaveModelResult } from "./utils/models";
+import { runCli, parseArgs } from "./lib/cli";
+import {
+  getModelList,
+  saveModel as saveModelToStore,
+  deleteModel as deleteModelFromStore,
+  writeModels,
+  migrateModels,
+  type Model,
+  type ModelsJson,
+  modelSchema,
+} from "./lib/store";
+import { launchClaudeCode } from "./lib/launcher";
+import { resetTerminalForChild } from "./utils/terminal";
+import modelsJson from "./models.json";
 
-export const models:(SelectOption & { order?: number })[] = Object.entries(modelsJson)
-  .map(([key, value]) => ({ 
-    name: key, 
-    description: value.description, 
-    value: value.value,
-    order: (value as any).order 
-  }))
-  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+// Convert store Model to SelectOption format for compatibility with existing components
+function modelToSelectOption(model: Model): SelectOption & { order?: number } {
+  return {
+    name: model.name,
+    description: model.description || "",
+    value: model.value,
+    order: model.order,
+  };
+}
 
-const modelSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  order: z.number().optional(),
-  value: z.object({
-    ANTHROPIC_BASE_URL: z.string(),
-    ANTHROPIC_AUTH_TOKEN: z.string(),
-    ANTHROPIC_MODEL: z.string(),
-    ANTHROPIC_SMALL_FAST_MODEL: z.string(),
-    ANTHROPIC_DEFAULT_SONNET_MODEL: z.string(),
-    ANTHROPIC_DEFAULT_OPUS_MODEL: z.string(),
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: z.string(),
-  }),
-});
+// Convert SelectOption back to Model format
+function selectOptionToModel(option: SelectOption & { order?: number }): Model {
+  return {
+    name: option.name,
+    description: option.description || "",
+    order: option.order,
+    value: option.value as Model["value"],
+  };
+}
+
+// Load models from store, with migration from in-source models.json
+function loadModels(): (SelectOption & { order?: number })[] {
+  // First, try to migrate in-source models if the store is empty
+  const storeResult = getModelList();
+
+  if (storeResult.ok && storeResult.data.length === 0 && Object.keys(modelsJson).length > 0) {
+    // Migrate from in-source models.json
+    const migrationSource: ModelsJson = {};
+    for (const [key, value] of Object.entries(modelsJson)) {
+      migrationSource[key] = {
+        name: key,
+        description: (value as any).description || "",
+        order: (value as any).order,
+        value: (value as any).value,
+      };
+    }
+    const migrateResult = migrateModels(migrationSource);
+    if (migrateResult.ok) {
+      console.log(`Migrated ${migrateResult.data.migrated} models to store.`);
+    }
+  }
+
+  // Load from store
+  const result = getModelList();
+  if (!result.ok) {
+    console.error(`Failed to load models: ${result.message}`);
+    // Fall back to in-source models
+    return Object.entries(modelsJson)
+      .map(([key, value]) => ({
+        name: key,
+        description: (value as any).description || "",
+        value: (value as any).value,
+        order: (value as any).order,
+      }))
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }
+
+  return result.data.map(modelToSelectOption);
+}
+
+// CLI mode: check args and execute if needed
+const args = process.argv.slice(2);
+const cliCommand = parseArgs(args);
+
+if (cliCommand.type !== "tui") {
+  // Run CLI command and exit
+  const exitCode = await runCli(args);
+  process.exit(exitCode);
+}
+
+// TUI mode: load models and render
+const initialModels = loadModels();
+
+if (initialModels.length === 0) {
+  console.log("No models configured. Creating a sample model...");
+  // Create a sample model to get started
+  const sampleModel: Model = {
+    name: "sample",
+    description: "Sample model configuration",
+    order: 1,
+    value: {
+      ANTHROPIC_BASE_URL: "https://api.anthropic.com",
+      ANTHROPIC_AUTH_TOKEN: "env:ANTHROPIC_API_KEY",
+      ANTHROPIC_MODEL: "claude-opus-4-5-20251101",
+      ANTHROPIC_SMALL_FAST_MODEL: "claude-sonnet-4-20250514",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-20250514",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5-20251101",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "claude-haiku-3-5-20241022",
+    },
+  };
+  saveModelToStore(sampleModel);
+  initialModels.push(modelToSelectOption(sampleModel));
+}
+
+export type SaveModelResult =
+  | { ok: true }
+  | { ok: false; reason: "validation" | "duplicate" | "read" | "write"; message: string };
 
 const saveModel = (
   model: SelectOption,
   originalName?: string,
-  options?: { allowOverwrite?: boolean },
+  options?: { allowOverwrite?: boolean }
 ): SaveModelResult => {
-  const validatedModel = modelSchema.safeParse(model);
+  const storeModel = selectOptionToModel(model as SelectOption & { order?: number });
+  const validatedModel = modelSchema.safeParse(storeModel);
   if (!validatedModel.success) {
     const errorMessages = validatedModel.error.issues.map((err) => {
       const path = err.path.join(".");
@@ -54,20 +139,32 @@ const saveModel = (
     };
   }
 
-  return saveModelToFile(validatedModel.data as SelectOption & { order?: number }, {
+  const result = saveModelToStore(validatedModel.data, {
     originalName,
     allowOverwrite: options?.allowOverwrite,
   });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: result.reason as "validation" | "duplicate" | "read" | "write",
+      message: result.message,
+    };
+  }
+
+  return { ok: true };
 };
 
-function ModeIndicator({ moveMode }: { moveMode: boolean }) {
+function ModeIndicator({ moveMode, launching }: { moveMode: boolean; launching: boolean }) {
   const { editMode } = useFocusContext();
-  const modeLabel = moveMode ? "Move" : editMode ? "Edit" : "View";
-  const modeColor = moveMode
-    ? theme.colors.success
-    : editMode
-      ? theme.colors.primary
-      : theme.colors.secondary;
+  const modeLabel = launching ? "Launching..." : moveMode ? "Move" : editMode ? "Edit" : "View";
+  const modeColor = launching
+    ? theme.colors.warning
+    : moveMode
+      ? theme.colors.success
+      : editMode
+        ? theme.colors.primary
+        : theme.colors.secondary;
 
   return (
     <text attributes={TextAttributes.DIM} style={{ fg: modeColor }}>
@@ -75,22 +172,38 @@ function ModeIndicator({ moveMode }: { moveMode: boolean }) {
     </text>
   );
 }
+
 function App() {
-
-
-  const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(models);
-  const [selectedModel, setSelectedModel] = useState<SelectOption>(models[0]!);
+  const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(initialModels);
+  const [selectedModel, setSelectedModel] = useState<SelectOption>(initialModels[0]!);
   const modelsStateRef = useRef(modelsState);
   const [moveMode, setMoveMode] = useState(false);
-  // const { isFocused, focus } = useFocusState("model_selection");
+  const [launching, setLaunching] = useState(false);
   const renderer = useRenderer();
+
+  // Handle Ctrl+C for graceful exit
   useEffect(() => {
-    const keyInput = (renderer as unknown as { keyInput?: { on?: (event: string, handler: (data: unknown) => void) => void; off?: (event: string, handler: (data: unknown) => void) => void } }).keyInput;
+    const keyInput = (
+      renderer as unknown as {
+        keyInput?: {
+          on?: (event: string, handler: (data: unknown) => void) => void;
+          off?: (event: string, handler: (data: unknown) => void) => void;
+        };
+      }
+    ).keyInput;
     if (!keyInput?.on) {
       return;
     }
     const onKeypress = (event: unknown) => {
-      const key = event as { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; super?: boolean; option?: boolean; code?: string };
+      const key = event as {
+        name?: string;
+        ctrl?: boolean;
+        meta?: boolean;
+        shift?: boolean;
+        super?: boolean;
+        option?: boolean;
+        code?: string;
+      };
       if (key.name === "c" && key.ctrl && !key.shift) {
         renderer.destroy();
         process.exit(0);
@@ -102,15 +215,32 @@ function App() {
       keyInput.off?.("keypress", onKeypress);
     };
   }, [renderer]);
+
+  // Handle paste events
   useEffect(() => {
-    const stdinBuffer = (renderer as unknown as { _stdinBuffer?: { on?: (event: string, handler: (data: unknown) => void) => void; off?: (event: string, handler: (data: unknown) => void) => void } })._stdinBuffer;
+    const stdinBuffer = (
+      renderer as unknown as {
+        _stdinBuffer?: {
+          on?: (event: string, handler: (data: unknown) => void) => void;
+          off?: (event: string, handler: (data: unknown) => void) => void;
+        };
+      }
+    )._stdinBuffer;
     if (!stdinBuffer?.on) {
       return;
     }
     const onPaste = (data: unknown) => {
       const text = typeof data === "string" ? data : "";
       const keyInput = (renderer as unknown as { keyInput?: { processPaste?: (text: string) => void } }).keyInput;
-      const focused = (renderer as unknown as { currentFocusedRenderable?: { constructor?: { name?: string }; value?: unknown; insertText?: (text: string) => void } }).currentFocusedRenderable;
+      const focused = (
+        renderer as unknown as {
+          currentFocusedRenderable?: {
+            constructor?: { name?: string };
+            value?: unknown;
+            insertText?: (text: string) => void;
+          };
+        }
+      ).currentFocusedRenderable;
       const beforeLength = typeof focused?.value === "string" ? focused.value.length : null;
       if (typeof keyInput?.processPaste === "function") {
         keyInput.processPaste(text);
@@ -125,39 +255,25 @@ function App() {
       stdinBuffer.off?.("paste", onPaste);
     };
   }, [renderer]);
-  // useEffect(() => {
-  //   renderer.console.show();
-  //   console.log("App started! Logs are being forwarded...");
-  // }, [renderer]);
-
-  // console.log(models);
-
-  const [newModelName, setNewModelName] = useState("");
-  const [newModelDescription, setNewModelDescription] = useState("");
-  const [newModelValue, setNewModelValue] = useState("");
-
-  const [activeFieldIndex, setActiveFieldIndex] = useState(0);
-
 
   useEffect(() => {
     modelsStateRef.current = modelsState;
   }, [modelsState]);
 
   const persistModelOrder = useCallback((nextModels: (SelectOption & { order?: number })[]) => {
-    const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
-    try {
-      const persisted = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
-      nextModels.forEach((model, index) => {
-        const existing = persisted[model.name] ?? {};
-        persisted[model.name] = {
-          ...existing,
-          ...model,
-          order: index + 1,
-        };
-      });
-      fs.writeFileSync(modelsPath, JSON.stringify(persisted, null, 2));
-    } catch (error) {
-      console.error("Failed to persist model order:", error);
+    // Convert to store format and persist
+    const modelsObj: ModelsJson = {};
+    nextModels.forEach((model, index) => {
+      modelsObj[model.name] = {
+        name: model.name,
+        description: model.description || "",
+        order: index + 1,
+        value: model.value as Model["value"],
+      };
+    });
+    const result = writeModels(modelsObj);
+    if (!result.ok) {
+      console.error("Failed to persist model order:", result.message);
     }
   }, []);
 
@@ -172,7 +288,7 @@ function App() {
       }
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
+      next.splice(toIndex, 0, moved!);
       const nextWithOrder = next.map((model, index) => ({
         ...model,
         order: index + 1,
@@ -190,37 +306,102 @@ function App() {
     persistModelOrder(modelsStateRef.current);
   }, [persistModelOrder]);
 
+  // Launch Claude Code with selected model
+  const handleLaunch = useCallback(
+    async (model: SelectOption) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:entry',message:'handleLaunch entry',data:{modelName:model.name},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+      setLaunching(true);
+
+      // Exit TUI before spawning Claude Code
+      renderer.destroy();
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:afterDestroy',message:'renderer.destroy called',data:{destroyCalled:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+
+      // Reset terminal input state so Claude Code inherits a clean TTY
+      resetTerminalForChild();
+
+      console.log(`\nLaunching Claude Code with model: ${model.name}`);
+      console.log(`Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}\n`);
+
+      const storeModel = selectOptionToModel(model as SelectOption & { order?: number });
+      const result = await launchClaudeCode(storeModel);
+
+      if (!result.ok) {
+        console.error(`\nError: ${result.message}`);
+        process.exit(1);
+      }
+
+      process.exit(result.exitCode);
+    },
+    [renderer]
+  );
+
+  // Delete a model
+  const handleDelete = useCallback(
+    (model: SelectOption) => {
+      const result = deleteModelFromStore(model.name);
+      if (!result.ok) {
+        console.error(`Failed to delete model: ${result.message}`);
+        return;
+      }
+
+      // Remove from local state
+      setModelsState((prev) => {
+        const next = prev.filter((m) => m.name !== model.name);
+        // Select the next model if the deleted one was selected
+        if (selectedModel.name === model.name && next.length > 0) {
+          const deletedIndex = prev.findIndex((m) => m.name === model.name);
+          const nextIndex = Math.min(deletedIndex, next.length - 1);
+          setSelectedModel(next[nextIndex]!);
+        }
+        return next;
+      });
+    },
+    [selectedModel.name]
+  );
+
   return (
     <FocusProvider order={["model_selection"]}>
-    <box alignItems="center" justifyContent="center" flexGrow={1}>
-      <box justifyContent="center" alignItems="flex-end">
-        <ascii-font font="tiny" text="CCLauncher" />
-        <text attributes={TextAttributes.DIM}>What will you build?</text>
+      <box alignItems="center" justifyContent="center" flexGrow={1}>
+        <box justifyContent="center" alignItems="flex-end">
+          <ascii-font font="tiny" text="CCLauncher" />
+          <text attributes={TextAttributes.DIM}>What will you build?</text>
+        </box>
+        <box
+          justifyContent="center"
+          alignItems="flex-start"
+          flexDirection="row"
+          gap={1}
+          width="100%"
+          height="100%"
+        >
+          <ModelSelection
+            models={modelsState}
+            onSelect={setSelectedModel}
+            selectedModel={selectedModel}
+            onMove={handleMoveModel}
+            onReorderEnd={handleReorderEnd}
+            moveMode={moveMode}
+            onMoveModeChange={setMoveMode}
+            onLaunch={handleLaunch}
+            onDelete={handleDelete}
+          />
+          <ModelDetails model={selectedModel} onSave={saveModel} />
+          <NewModelForm />
+        </box>
       </box>
-      <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1} width="100%" height="100%">
-        <ModelSelection
-          models={modelsState}
-          onSelect={setSelectedModel}
-          selectedModel={selectedModel}
-          onMove={handleMoveModel}
-          onReorderEnd={handleReorderEnd}
-          moveMode={moveMode}
-          onMoveModeChange={setMoveMode}
-        />
-        <ModelDetails model={selectedModel} onSave={saveModel} />
-        <NewModelForm />
+      <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1}>
+        <text attributes={TextAttributes.DIM}>Legend:</text>
+        <text attributes={TextAttributes.DIM}>n: New</text>
+        <text attributes={TextAttributes.DIM}>e: Edit</text>
+        <text attributes={TextAttributes.DIM}>Enter: Launch</text>
+        <text attributes={TextAttributes.DIM}>arrows: Navigate</text>
+        <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
+        <ModeIndicator moveMode={moveMode} launching={launching} />
       </box>
-
-    </box>
-    <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1}>
-      <text attributes={TextAttributes.DIM}>Legend:</text>
-      <text attributes={TextAttributes.DIM}>n: New</text>
-      <text attributes={TextAttributes.DIM}>e: Edit</text>
-      <text attributes={TextAttributes.DIM}>arrows: Navigate/Scroll</text>
-      <text attributes={TextAttributes.DIM}>return: Save</text>
-      <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
-      <ModeIndicator moveMode={moveMode} />
-    </box>
     </FocusProvider>
   );
 }

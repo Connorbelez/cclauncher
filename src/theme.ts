@@ -8,6 +8,7 @@ export const theme = {
         secondary: "#bb9af7",     // Secondary accent (labels)
         success: "#9ece6a",       // Success/Save actions
         error: "#f7768e",         // Required/Error indicators
+        warning: "#e0af68",       // Warning/Caution indicators
         text: {
             primary: "#c0caf5",   // Primary text
             secondary: "#565f89", // Dimmed/secondary text
