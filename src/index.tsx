@@ -56,6 +56,7 @@ const saveModel = (model: SelectOption, originalName?: string) => {
 function App() {
 
 
+  const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(models);
   const [selectedModel, setSelectedModel] = useState<SelectOption>(models[0]!);
   // const { isFocused, focus } = useFocusState("model_selection");
   const renderer = useRenderer();
@@ -114,6 +115,45 @@ function App() {
   const [activeFieldIndex, setActiveFieldIndex] = useState(0);
 
 
+  const persistModelOrder = (nextModels: (SelectOption & { order?: number })[]) => {
+    const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
+    const persisted = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
+    nextModels.forEach((model, index) => {
+      const existing = persisted[model.name] ?? {};
+      persisted[model.name] = {
+        ...existing,
+        ...model,
+        order: index + 1,
+      };
+    });
+    fs.writeFileSync(modelsPath, JSON.stringify(persisted, null, 2));
+  };
+
+  const handleMoveModel = (fromIndex: number, direction: "up" | "down") => {
+    setModelsState((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length) {
+        return prev;
+      }
+      const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
+      if (toIndex < 0 || toIndex >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      const nextWithOrder = next.map((model, index) => ({
+        ...model,
+        order: index + 1,
+      }));
+      setSelectedModel(nextWithOrder[toIndex]!);
+      return nextWithOrder;
+    });
+  };
+
+  const handleReorderEnd = () => {
+    persistModelOrder(modelsState);
+  };
+
   return (
     <FocusProvider order={["model_selection"]}>
     <box alignItems="center" justifyContent="center" flexGrow={1}>
@@ -122,7 +162,13 @@ function App() {
         <text attributes={TextAttributes.DIM}>What will you build?</text>
       </box>
       <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1} width="100%" height="100%">
-        <ModelSelection models={models} onSelect={setSelectedModel} selectedModel={selectedModel} />
+        <ModelSelection
+          models={modelsState}
+          onSelect={setSelectedModel}
+          selectedModel={selectedModel}
+          onMove={handleMoveModel}
+          onReorderEnd={handleReorderEnd}
+        />
         <ModelDetails model={selectedModel} onSave={saveModel} />
         <NewModelForm />
       </box>
