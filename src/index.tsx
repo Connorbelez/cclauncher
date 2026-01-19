@@ -20,6 +20,7 @@ import {
 } from "./lib/store";
 import { launchClaudeCode } from "./lib/launcher";
 import { resetTerminalForChild } from "./utils/terminal";
+import { getGitRepoRoot, generateWorktreePath, createDetachedWorktree } from "./lib/git";
 import modelsJson from "./models.json";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -94,6 +95,9 @@ if (cliCommand.type !== "tui") {
 
 // TUI mode: load models and render
 const initialModels = loadModels();
+
+// Detect if we're in a git repository
+const gitRepoRoot = await getGitRepoRoot();
 
 if (initialModels.length === 0) {
   console.log("No models configured. Creating a sample model...");
@@ -173,13 +177,14 @@ function ModeIndicator({ moveMode, launching }: { moveMode: boolean; launching: 
   );
 }
 
-function App() {
+function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
   const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(initialModels);
   const [selectedModel, setSelectedModel] = useState<SelectOption>(initialModels[0]!);
   const modelsStateRef = useRef(modelsState);
   const [moveMode, setMoveMode] = useState(false);
   const [launching, setLaunching] = useState(false);
   const renderer = useRenderer();
+  const isGitRepo = gitRepoRoot !== null;
 
   // Handle Ctrl+C for graceful exit
   useEffect(() => {
@@ -308,9 +313,9 @@ function App() {
 
   // Launch Claude Code with selected model
   const handleLaunch = useCallback(
-    async (model: SelectOption) => {
+    async (model: SelectOption, options?: { useWorktree?: boolean }) => {
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:entry',message:'handleLaunch entry',data:{modelName:model.name},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:entry',message:'handleLaunch entry',data:{modelName:model.name,useWorktree:options?.useWorktree},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
       // #endregion
       setLaunching(true);
 
@@ -323,11 +328,29 @@ function App() {
       // Reset terminal input state so Claude Code inherits a clean TTY
       resetTerminalForChild();
 
+      // Handle worktree creation if requested
+      let launchCwd: string | undefined;
+      if (options?.useWorktree && gitRepoRoot) {
+        const worktreePath = generateWorktreePath(gitRepoRoot);
+        console.log(`\nCreating worktree at: ${worktreePath}`);
+        const worktreeResult = await createDetachedWorktree(gitRepoRoot, worktreePath);
+        if (!worktreeResult.ok) {
+          console.error(`\nError creating worktree: ${worktreeResult.message}`);
+          process.exit(1);
+        }
+        launchCwd = worktreeResult.path;
+        console.log(`Worktree created successfully.`);
+      }
+
       console.log(`\nLaunching Claude Code with model: ${model.name}`);
-      console.log(`Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}\n`);
+      console.log(`Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}`);
+      if (launchCwd) {
+        console.log(`Working directory: ${launchCwd}`);
+      }
+      console.log("");
 
       const storeModel = selectOptionToModel(model as SelectOption & { order?: number });
-      const result = await launchClaudeCode(storeModel);
+      const result = await launchClaudeCode(storeModel, { cwd: launchCwd });
 
       if (!result.ok) {
         console.error(`\nError: ${result.message}`);
@@ -336,7 +359,7 @@ function App() {
 
       process.exit(result.exitCode);
     },
-    [renderer]
+    [renderer, gitRepoRoot]
   );
 
   // Delete a model
@@ -388,6 +411,7 @@ function App() {
             onMoveModeChange={setMoveMode}
             onLaunch={handleLaunch}
             onDelete={handleDelete}
+            isGitRepo={isGitRepo}
           />
           <ModelDetails model={selectedModel} onSave={saveModel} />
           <NewModelForm />
@@ -398,6 +422,7 @@ function App() {
         <text attributes={TextAttributes.DIM}>n: New</text>
         <text attributes={TextAttributes.DIM}>e: Edit</text>
         <text attributes={TextAttributes.DIM}>Enter: Launch</text>
+        {isGitRepo && <text attributes={TextAttributes.DIM}>w: Worktree</text>}
         <text attributes={TextAttributes.DIM}>arrows: Navigate</text>
         <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
         <ModeIndicator moveMode={moveMode} launching={launching} />
@@ -416,4 +441,4 @@ const renderer = await createCliRenderer({
     reportText: false,
   },
 });
-createRoot(renderer).render(<App />);
+createRoot(renderer).render(<App gitRepoRoot={gitRepoRoot} />);

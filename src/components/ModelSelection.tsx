@@ -12,13 +12,15 @@ export type ModelSelectionProps = {
     onReorderEnd: () => void;
     moveMode: boolean;
     onMoveModeChange: (moveMode: boolean) => void;
-    onLaunch?: (model: SelectOption) => void;
+    onLaunch?: (model: SelectOption, options?: { useWorktree?: boolean }) => void;
     onDelete?: (model: SelectOption) => void;
+    isGitRepo?: boolean;
 }
 
-export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd, moveMode, onMoveModeChange, onLaunch, onDelete }: ModelSelectionProps) {
+export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd, moveMode, onMoveModeChange, onLaunch, onDelete, isGitRepo }: ModelSelectionProps) {
     const { isFocused, focusedId, editMode } = useFocusState("model_selection");
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [worktreeMode, setWorktreeMode] = useState(false);
 
     const selectedIndex = useMemo(() => {
         const index = models.findIndex((model) => model.name === selectedModel.name);
@@ -49,15 +51,30 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
             return;
         }
 
+        // Toggle worktree mode with 'w' (only when in a git repo)
+        if (key.name === "w" && isGitRepo && !moveMode) {
+            setWorktreeMode(!worktreeMode);
+            return;
+        }
+
         if (moveMode && (key.name === "return" || key.name === "escape")) {
             onMoveModeChange(false);
             onReorderEnd();
             return;
         }
 
+        // Exit worktree mode on Escape
+        if (worktreeMode && key.name === "escape") {
+            setWorktreeMode(false);
+            return;
+        }
+
         // Launch on Enter when not in move mode
         if (!moveMode && key.name === "return" && onLaunch) {
-            onLaunch(selectedModel);
+            onLaunch(selectedModel, { useWorktree: worktreeMode });
+            if (worktreeMode) {
+                setWorktreeMode(false);
+            }
             return;
         }
 
@@ -86,11 +103,13 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
 
     const isActive = isFocused;
     const selectFocused = isFocused && !moveMode;
-    const borderColor = moveMode
-        ? theme.colors.success
-        : editMode
-            ? theme.colors.primary
-            : theme.colors.secondary;
+    const borderColor = worktreeMode
+        ? theme.colors.warning
+        : moveMode
+            ? theme.colors.success
+            : editMode
+                ? theme.colors.primary
+                : theme.colors.secondary;
 
     return (
         <box flexDirection="column" style={{ width: "100%", height: "80%" }}>
@@ -150,13 +169,17 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
                     height: 1,
                 }}
             >
-                <text style={{ fg: confirmDelete ? theme.colors.error : theme.colors.text.muted }}>
+                <text style={{ fg: confirmDelete ? theme.colors.error : worktreeMode ? theme.colors.warning : theme.colors.text.muted }}>
                     {confirmDelete
                         ? `Delete "${selectedModel.name}"? [y] Yes  [n/Esc] Cancel`
                         : isActive
                             ? moveMode
                                 ? "[↑↓] Move  [m/Enter/Esc] Save & Exit"
-                                : "[↑↓] Navigate  [Enter] Launch  [m] Reorder  [d] Delete"
+                                : worktreeMode
+                                    ? "[Enter] Launch in Worktree  [w/Esc] Cancel"
+                                    : isGitRepo
+                                        ? "[↑↓] Navigate  [Enter] Launch  [w] Worktree  [m] Reorder  [d] Delete"
+                                        : "[↑↓] Navigate  [Enter] Launch  [m] Reorder  [d] Delete"
                             : "[Tab] Focus"}
                 </text>
             </box>
