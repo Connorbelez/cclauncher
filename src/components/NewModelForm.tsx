@@ -11,6 +11,7 @@ import { ConfirmModal } from "./ConfirmModal";
 const newModelSchema = z.object({
     name: z.string(),
     description: z.string(),
+    order: z.number().optional(),
     value: z.object({
         ANTHROPIC_BASE_URL: z.string(),
         ANTHROPIC_AUTH_TOKEN: z.string(),
@@ -86,7 +87,16 @@ export function NewModelForm() {
             // In a real implementation this should probably use an absolute path or be configurable
             const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
             const modelsJson = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
-            modelsJson[validatedModel.data.name] = validatedModel.data;
+            
+            // Calculate new order
+            const orders = Object.values(modelsJson).map((m: any) => m.order ?? 0);
+            const maxOrder = Math.max(...orders as number[], -1);
+            const newOrder = maxOrder + 1;
+            
+            modelsJson[validatedModel.data.name] = {
+                ...validatedModel.data,
+                order: newOrder
+            };
             fs.writeFileSync(modelsPath, JSON.stringify(modelsJson, null, 2));
 
             // Reset form
