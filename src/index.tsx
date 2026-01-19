@@ -65,7 +65,7 @@ function App() {
     <FocusProvider order={["model_selection"]}>
     <box alignItems="center" justifyContent="center" flexGrow={1}>
       <box justifyContent="center" alignItems="flex-end">
-        <ascii-font font="tiny" text="OpenTUI" />
+        <ascii-font font="tiny" text="CCLauncher" />
         <text attributes={TextAttributes.DIM}>What will you build?</text>
       </box>
       <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1} width="100%" height="100%">
