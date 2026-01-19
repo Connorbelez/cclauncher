@@ -1,4 +1,14 @@
 import { type Model, resolveEnvRef } from "./store";
+import { resetTerminalForChild } from "../utils/terminal";
+
+// Lazy-load bun-pty; may fail on some platforms
+let bunPtySpawn: typeof import("bun-pty").spawn | null = null;
+try {
+  const bunPty = await import("bun-pty");
+  bunPtySpawn = bunPty.spawn;
+} catch {
+  // bun-pty not available; will use fallback
+}
 
 export type LaunchResult =
   | { ok: true; exitCode: number }
@@ -71,12 +81,20 @@ export function prepareEnvironment(model: Model): Record<string, string> {
 }
 
 /**
- * Launch Claude Code with the given model configuration.
- * This function spawns Claude Code with inherited stdio for full terminal control.
+ * Launch Claude Code with the given model configuration using bun-pty for proper TTY handling.
+ * Falls back to Bun.spawn if bun-pty is unavailable.
  */
 export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:entry',message:'launchClaudeCode entry',data:{modelName:model.name,bunPtyAvailable:!!bunPtySpawn},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  // #endregion
+  resetTerminalForChild();
+
   // Verify Claude is installed
   const isInstalled = await checkClaudeInstalled();
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:checkInstalled',message:'checkClaudeInstalled result',data:{isInstalled},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  // #endregion
   if (!isInstalled) {
     return {
       ok: false,
@@ -92,8 +110,23 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
   // Prepare environment
   const env = prepareEnvironment(model);
 
+  // Try bun-pty first for proper PTY handling
+  if (bunPtySpawn) {
+    try {
+      return await launchWithPty(env);
+    } catch (err) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:ptyFailed',message:'bun-pty spawn failed, falling back',data:{error:err instanceof Error ? err.message : String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+      // #endregion
+      // Fall through to Bun.spawn fallback
+    }
+  }
+
+  // Fallback: Bun.spawn with inherited stdio
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:fallback',message:'Using Bun.spawn fallback',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  // #endregion
   try {
-    // Spawn Claude Code with inherited stdio for full terminal control
     const proc = Bun.spawn(["claude"], {
       env,
       stdin: "inherit",
@@ -101,9 +134,7 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
       stderr: "inherit",
     });
 
-    // Wait for process to exit
     const exitCode = await proc.exited;
-
     return { ok: true, exitCode };
   } catch (err) {
     return {
@@ -112,6 +143,91 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
       message: `Failed to launch Claude Code: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+/**
+ * Launch Claude Code using bun-pty for proper PTY handling.
+ * This gives the child process a real TTY with independent input buffering.
+ */
+async function launchWithPty(env: Record<string, string>): Promise<LaunchResult> {
+  if (!bunPtySpawn) {
+    throw new Error("bun-pty not available");
+  }
+
+  // Get terminal size
+  const cols = process.stdout.columns || 80;
+  const rows = process.stdout.rows || 24;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawn',message:'Spawning with bun-pty',data:{cols,rows},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  // #endregion
+
+  const pty = bunPtySpawn("claude", [], {
+    name: "xterm-256color",
+    cols,
+    rows,
+    cwd: process.cwd(),
+    env,
+  });
+
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawned',message:'PTY spawned',data:{pid:pty.pid},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  // #endregion
+
+  // Put stdin in raw mode for direct input passthrough
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+
+  // Forward PTY output to stdout
+  const dataHandler = pty.onData((data: string) => {
+    process.stdout.write(data);
+  });
+
+  // Forward stdin to PTY
+  const onStdinData = (data: Buffer) => {
+    pty.write(data.toString());
+  };
+  process.stdin.on("data", onStdinData);
+
+  // Handle terminal resize
+  const onResize = () => {
+    const newCols = process.stdout.columns || 80;
+    const newRows = process.stdout.rows || 24;
+    pty.resize(newCols, newRows);
+  };
+  process.stdout.on("resize", onResize);
+
+  // Wait for exit
+  return new Promise<LaunchResult>((resolve) => {
+    pty.onExit(({ exitCode, signal }) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:exit',message:'PTY exited',data:{exitCode,signal},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+      // #endregion
+
+      // Cleanup
+      dataHandler.dispose();
+      process.stdin.off("data", onStdinData);
+      process.stdout.off("resize", onResize);
+
+      // Restore stdin mode
+      if (process.stdin.isTTY) {
+        process.stdin.setRawMode(false);
+      }
+      process.stdin.pause();
+
+      if (signal !== undefined && signal !== null) {
+        resolve({
+          ok: false,
+          reason: "signal",
+          message: `Claude Code was killed by signal ${signal}`,
+        });
+      } else {
+        resolve({ ok: true, exitCode: exitCode ?? 0 });
+      }
+    });
+  });
 }
 
 /**
