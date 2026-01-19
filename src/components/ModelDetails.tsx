@@ -6,11 +6,24 @@ import { theme } from "@/theme";
 import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
 import { ConfirmModal } from "./ConfirmModal";
+import { z } from "zod";
 
 export type ModelDetailsProps = {
     model: SelectOption;
-    onSave: (model: SelectOption, originalName?: string) => void;
+    onSave: (model: SelectOption, originalName?: string, options?: { allowOverwrite?: boolean }) => {
+        ok: boolean;
+        reason?: "validation" | "duplicate" | "read" | "write";
+        message?: string;
+    };
 }
+
+const editModelSchema = z.object({
+    name: z.string().trim().min(1, "Name is required"),
+    value: z.object({
+        ANTHROPIC_BASE_URL: z.string().trim().min(1, "Base URL is required"),
+        ANTHROPIC_MODEL: z.string().trim().min(1, "Model is required"),
+    }),
+});
 
 export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     const { editMode, setEditMode, isFocused, setFocusedId, focusedId, setModalOpen, setExitGuard, clearExitGuard } = useFocusState("model_details");
@@ -27,6 +40,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     const [anthropicDefaultHaikuModel, setAnthropicDefaultHaikuModel] = useState(model.value.ANTHROPIC_DEFAULT_HAIKU_MODEL);
     const [activeFieldIndex, setActiveFieldIndex] = useState(0);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [isOverwriteConfirmOpen, setIsOverwriteConfirmOpen] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const isDirty = useMemo(() => {
         return (
@@ -63,9 +78,37 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
         setModalOpen(false);
     }, [setModalOpen]);
 
-    const handleSave = useCallback(() => {
-        // Pass the original model.name so the save function knows which entry to update
-        onSave({
+    const openOverwriteConfirm = useCallback(() => {
+        setIsOverwriteConfirmOpen(true);
+        setModalOpen(true);
+    }, [setModalOpen]);
+
+    const closeOverwriteConfirm = useCallback(() => {
+        setIsOverwriteConfirmOpen(false);
+        setModalOpen(false);
+    }, [setModalOpen]);
+
+    const handleSave = useCallback((allowOverwrite: boolean): { ok: boolean; reason?: string } => {
+        setErrorMessage(null);
+
+        const validatedModel = editModelSchema.safeParse({
+            name: modelName,
+            value: {
+                ANTHROPIC_BASE_URL: anthropicBaseUrl,
+                ANTHROPIC_MODEL: anthropicModel,
+            },
+        });
+
+        if (!validatedModel.success) {
+            const errorMessages = validatedModel.error.issues.map((err: z.ZodIssue) => {
+                const path = err.path.join(".");
+                return `${path}: ${err.message}`;
+            });
+            setErrorMessage(`Validation failed:\n${errorMessages.join("\n")}`);
+            return { ok: false, reason: "validation" };
+        }
+
+        const result = onSave({
             ...model,
             name: modelName,
             description: modelDescription,
@@ -79,9 +122,18 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                 ANTHROPIC_DEFAULT_OPUS_MODEL: anthropicDefaultOpusModel,
                 ANTHROPIC_DEFAULT_HAIKU_MODEL: anthropicDefaultHaikuModel,
             },
-        }, model.name);
+        }, model.name, { allowOverwrite });
+
+        if (!result.ok) {
+            if (result.reason !== "duplicate" && result.message) {
+                setErrorMessage(result.message);
+            }
+            return { ok: false, reason: result.reason };
+        }
+
         setEditMode(false);
         setFocusedId('model_selection');
+        return { ok: true };
     }, [
         onSave,
         model,
@@ -97,9 +149,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
         setEditMode,
         setFocusedId,
     ]);
-    
-    // Keep local state in sync when model changes
-    useEffect(() => {
+
+    const resetFields = useCallback(() => {
         setModelName(model.name);
         setModelDescription(model.description);
         setAnthropicBaseUrl(model.value.ANTHROPIC_BASE_URL);
@@ -109,7 +160,30 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
         setAnthropicDefaultSonnetModel(model.value.ANTHROPIC_DEFAULT_SONNET_MODEL);
         setAnthropicDefaultOpusModel(model.value.ANTHROPIC_DEFAULT_OPUS_MODEL);
         setAnthropicDefaultHaikuModel(model.value.ANTHROPIC_DEFAULT_HAIKU_MODEL);
-    }, [model]);
+        setErrorMessage(null);
+    }, [
+        model.name,
+        model.description,
+        model.value.ANTHROPIC_BASE_URL,
+        model.value.ANTHROPIC_AUTH_TOKEN,
+        model.value.ANTHROPIC_MODEL,
+        model.value.ANTHROPIC_SMALL_FAST_MODEL,
+        model.value.ANTHROPIC_DEFAULT_SONNET_MODEL,
+        model.value.ANTHROPIC_DEFAULT_OPUS_MODEL,
+        model.value.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+    ]);
+    
+    // Keep local state in sync when model changes
+    useEffect(() => {
+        resetFields();
+    }, [resetFields]);
+
+    useEffect(() => {
+        if (!errorMessage) return;
+        if (modelName.trim() && anthropicBaseUrl.trim() && anthropicModel.trim()) {
+            setErrorMessage(null);
+        }
+    }, [errorMessage, modelName, anthropicBaseUrl, anthropicModel]);
 
     useEffect(() => {
         if (editMode) {
@@ -118,7 +192,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
     }, [editMode]);
 
     useKeyboard((key) => {
-        if (!isFocused || isConfirmOpen) return;
+        if (!isFocused || isConfirmOpen || isOverwriteConfirmOpen) return;
 
         if (editMode) {
             // In edit mode, arrow keys navigate between fields
@@ -150,7 +224,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 
     useEffect(() => {
         setExitGuard("model_details", (key) => {
-            if (isConfirmOpen) {
+            if (isConfirmOpen || isOverwriteConfirmOpen) {
                 return true;
             }
             if (!editMode || !isDirty) return false;
@@ -162,13 +236,14 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
         });
 
         return () => clearExitGuard("model_details");
-    }, [clearExitGuard, editMode, isConfirmOpen, isDirty, openConfirm, setExitGuard]);
+    }, [clearExitGuard, editMode, isConfirmOpen, isDirty, isOverwriteConfirmOpen, openConfirm, setExitGuard]);
 
     if (focusedId !== 'model_details' && focusedId !== 'model_selection') {
         return null;
     }
 
     const isActive = isFocused;
+    const borderColor = editMode ? theme.colors.primary : theme.colors.secondary;
 
     return (<>
         <scrollbox
@@ -179,7 +254,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                 height: "80%",
                 border: true,
                 borderStyle: isActive ? "double" : "rounded",
-                borderColor: isActive ? theme.colors.primary : theme.colors.border,
+                borderColor,
                 rootOptions: { backgroundColor: theme.colors.surface },
                 wrapperOptions: { backgroundColor: theme.colors.surfaceHighlight },
                 viewportOptions: { backgroundColor: theme.colors.background },
@@ -206,6 +281,35 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                         {modelDescription}
                     </text>
                 </box>
+
+                {errorMessage && (
+                    <box 
+                        flexDirection="column"
+                        style={{
+                            border: true,
+                            borderStyle: "rounded",
+                            borderColor: "#ef4444",
+                            backgroundColor: "#1f1f1f",
+                            paddingLeft: 1,
+                            paddingRight: 1,
+                            paddingTop: 1,
+                            paddingBottom: 1,
+                            marginBottom: 1,
+                        }}
+                    >
+                        <text 
+                            attributes={TextAttributes.BOLD}
+                            style={{ fg: "#ef4444", marginBottom: 1 }}
+                        >
+                            Error
+                        </text>
+                        {errorMessage.split("\n").map((line, idx) => (
+                            <text key={idx} style={{ fg: theme.colors.text.primary }}>
+                                {line}
+                            </text>
+                        ))}
+                    </box>
+                )}
 
                 {/* Basic Info Section */}
                 <box flexDirection="column" gap={0}>
@@ -309,7 +413,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
                 {editMode && (
                     <box marginTop={1} paddingTop={1}>
                         <text style={{ fg: theme.colors.text.muted }}>
-                            [Enter] Save   [Esc] Cancel   [Ctrl+C] Copy   [Ctrl+V] Paste
+                            [Enter] Save   [Esc] Cancel   [Cmd+C / Ctrl+Shift+C] Copy   [Cmd+V / Ctrl+V] Paste
                         </text>
                     </box>
                 )}
@@ -322,10 +426,32 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
             confirmLabel="Save"
             cancelLabel="Cancel"
             onConfirm={() => {
-                handleSave();
+                const result = handleSave(false);
+                closeConfirm();
+                if (!result.ok && result.reason === "duplicate") {
+                    openOverwriteConfirm();
+                }
+            }}
+            onCancel={() => {
+                resetFields();
+                setEditMode(false);
+                setFocusedId("model_selection");
                 closeConfirm();
             }}
-            onCancel={closeConfirm}
+        />
+        <ConfirmModal
+            isOpen={isOverwriteConfirmOpen}
+            title="Overwrite existing model?"
+            message="A model with this name already exists. Do you want to overwrite it?"
+            confirmLabel="Overwrite"
+            cancelLabel="Cancel"
+            onConfirm={() => {
+                handleSave(true);
+                closeOverwriteConfirm();
+            }}
+            onCancel={() => {
+                closeOverwriteConfirm();
+            }}
         />
     </>
     );

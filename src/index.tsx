@@ -1,14 +1,16 @@
 import { createCliRenderer, TextAttributes, type SelectOption } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { useRenderer } from "@opentui/react"
-import { useEffect, useState } from "react";
-import { FocusProvider, useFocusState } from "./hooks/FocusProvider";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FocusProvider, useFocusContext } from "./hooks/FocusProvider";
 import { ModelSelection } from "./components/ModelSelection";
 import { ModelDetails } from "./components/ModelDetails";
 import modelsJson from "./models.json";
 import { z } from "zod";
 import fs from "fs";
 import { NewModelForm } from "./components/NewModelForm";
+import { theme } from "./theme";
+import { saveModelToFile, type SaveModelResult } from "./utils/models";
 
 export const models:(SelectOption & { order?: number })[] = Object.entries(modelsJson)
   .map(([key, value]) => ({ 
@@ -34,30 +36,52 @@ const modelSchema = z.object({
   }),
 });
 
-const saveModel = (model: SelectOption, originalName?: string) => {
-  //Validate 
+const saveModel = (
+  model: SelectOption,
+  originalName?: string,
+  options?: { allowOverwrite?: boolean },
+): SaveModelResult => {
   const validatedModel = modelSchema.safeParse(model);
   if (!validatedModel.success) {
-    console.error("Invalid model:", validatedModel.error);
-    return;
+    const errorMessages = validatedModel.error.issues.map((err) => {
+      const path = err.path.join(".");
+      return `${path}: ${err.message}`;
+    });
+    return {
+      ok: false,
+      reason: "validation",
+      message: `Validation failed:\n${errorMessages.join("\n")}`,
+    };
   }
-  //Save model to models.json
-  //update the models.json file with the new model, using original name as key
-  const modelsJson = JSON.parse(fs.readFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", "utf8"));
-  
-  // If we have an original name and it's different from the new name, delete the old entry
-  if (originalName && originalName !== validatedModel.data.name) {
-    delete modelsJson[originalName];
-  }
-  
-  modelsJson[validatedModel.data.name] = validatedModel.data;
-  fs.writeFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", JSON.stringify(modelsJson, null, 2));
+
+  return saveModelToFile(validatedModel.data as SelectOption & { order?: number }, {
+    originalName,
+    allowOverwrite: options?.allowOverwrite,
+  });
+};
+
+function ModeIndicator({ moveMode }: { moveMode: boolean }) {
+  const { editMode } = useFocusContext();
+  const modeLabel = moveMode ? "Move" : editMode ? "Edit" : "View";
+  const modeColor = moveMode
+    ? theme.colors.success
+    : editMode
+      ? theme.colors.primary
+      : theme.colors.secondary;
+
+  return (
+    <text attributes={TextAttributes.DIM} style={{ fg: modeColor }}>
+      Mode: {modeLabel}
+    </text>
+  );
 }
 function App() {
 
 
   const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(models);
   const [selectedModel, setSelectedModel] = useState<SelectOption>(models[0]!);
+  const modelsStateRef = useRef(modelsState);
+  const [moveMode, setMoveMode] = useState(false);
   // const { isFocused, focus } = useFocusState("model_selection");
   const renderer = useRenderer();
   useEffect(() => {
@@ -115,21 +139,29 @@ function App() {
   const [activeFieldIndex, setActiveFieldIndex] = useState(0);
 
 
-  const persistModelOrder = (nextModels: (SelectOption & { order?: number })[]) => {
-    const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
-    const persisted = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
-    nextModels.forEach((model, index) => {
-      const existing = persisted[model.name] ?? {};
-      persisted[model.name] = {
-        ...existing,
-        ...model,
-        order: index + 1,
-      };
-    });
-    fs.writeFileSync(modelsPath, JSON.stringify(persisted, null, 2));
-  };
+  useEffect(() => {
+    modelsStateRef.current = modelsState;
+  }, [modelsState]);
 
-  const handleMoveModel = (fromIndex: number, direction: "up" | "down") => {
+  const persistModelOrder = useCallback((nextModels: (SelectOption & { order?: number })[]) => {
+    const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
+    try {
+      const persisted = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
+      nextModels.forEach((model, index) => {
+        const existing = persisted[model.name] ?? {};
+        persisted[model.name] = {
+          ...existing,
+          ...model,
+          order: index + 1,
+        };
+      });
+      fs.writeFileSync(modelsPath, JSON.stringify(persisted, null, 2));
+    } catch (error) {
+      console.error("Failed to persist model order:", error);
+    }
+  }, []);
+
+  const handleMoveModel = useCallback((fromIndex: number, direction: "up" | "down") => {
     setModelsState((prev) => {
       if (fromIndex < 0 || fromIndex >= prev.length) {
         return prev;
@@ -145,14 +177,18 @@ function App() {
         ...model,
         order: index + 1,
       }));
-      setSelectedModel(nextWithOrder[toIndex]!);
+      const nextSelected = nextWithOrder[toIndex];
+      if (!nextSelected) {
+        return prev;
+      }
+      setSelectedModel(nextSelected);
       return nextWithOrder;
     });
-  };
+  }, []);
 
-  const handleReorderEnd = () => {
-    persistModelOrder(modelsState);
-  };
+  const handleReorderEnd = useCallback(() => {
+    persistModelOrder(modelsStateRef.current);
+  }, [persistModelOrder]);
 
   return (
     <FocusProvider order={["model_selection"]}>
@@ -168,6 +204,8 @@ function App() {
           selectedModel={selectedModel}
           onMove={handleMoveModel}
           onReorderEnd={handleReorderEnd}
+          moveMode={moveMode}
+          onMoveModeChange={setMoveMode}
         />
         <ModelDetails model={selectedModel} onSave={saveModel} />
         <NewModelForm />
@@ -181,6 +219,7 @@ function App() {
       <text attributes={TextAttributes.DIM}>arrows: Navigate/Scroll</text>
       <text attributes={TextAttributes.DIM}>return: Save</text>
       <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
+      <ModeIndicator moveMode={moveMode} />
     </box>
     </FocusProvider>
   );

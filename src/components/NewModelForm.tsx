@@ -1,21 +1,21 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useFocusState } from "@/hooks/FocusProvider";
-import fs from "fs";
 import { z } from "zod";
 import { theme } from "@/theme";
 import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
 import { ConfirmModal } from "./ConfirmModal";
+import { saveModelToFile, type SaveModelResult } from "@/utils/models";
 
 const newModelSchema = z.object({
-    name: z.string(),
+    name: z.string().trim().min(1, "Name is required"),
     description: z.string(),
     order: z.number().optional(),
     value: z.object({
-        ANTHROPIC_BASE_URL: z.string(),
+        ANTHROPIC_BASE_URL: z.string().trim().min(1, "Base URL is required"),
         ANTHROPIC_AUTH_TOKEN: z.string(),
-        ANTHROPIC_MODEL: z.string(),
+        ANTHROPIC_MODEL: z.string().trim().min(1, "Model is required"),
         ANTHROPIC_SMALL_FAST_MODEL: z.string(),
         ANTHROPIC_DEFAULT_SONNET_MODEL: z.string(),
         ANTHROPIC_DEFAULT_OPUS_MODEL: z.string(),
@@ -38,6 +38,8 @@ export function NewModelForm() {
     });
     const [activeFieldIndex, setActiveFieldIndex] = useState(0);
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [isOverwriteConfirmOpen, setIsOverwriteConfirmOpen] = useState(false);
 
     const isDirty = useMemo(() => {
         return Boolean(
@@ -63,14 +65,18 @@ export function NewModelForm() {
         setModalOpen(false);
     }, [setModalOpen]);
 
-    const handleSave = useCallback(() => {
-        console.log("Creating new model");
+    const openOverwriteConfirm = useCallback(() => {
+        setIsOverwriteConfirmOpen(true);
+        setModalOpen(true);
+    }, [setModalOpen]);
 
-        // Basic validation
-        if (!newModelName) {
-            // In a real app we'd show an error message
-            return;
-        }
+    const closeOverwriteConfirm = useCallback(() => {
+        setIsOverwriteConfirmOpen(false);
+        setModalOpen(false);
+    }, [setModalOpen]);
+
+    const handleSave = useCallback((allowOverwrite: boolean): SaveModelResult => {
+        setErrorMessage(null);
 
         const validatedModel = newModelSchema.safeParse({
             name: newModelName,
@@ -79,47 +85,61 @@ export function NewModelForm() {
         });
 
         if (!validatedModel.success) {
-            console.error("Invalid model:", validatedModel.error);
-            return;
-        }
-
-        try {
-            // In a real implementation this should probably use an absolute path or be configurable
-            const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
-            const modelsJson = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
-            
-            // Calculate new order
-            const orders = Object.values(modelsJson).map((m: any) => m.order ?? 0);
-            const maxOrder = Math.max(...orders as number[], -1);
-            const newOrder = maxOrder + 1;
-            
-            modelsJson[validatedModel.data.name] = {
-                ...validatedModel.data,
-                order: newOrder
-            };
-            fs.writeFileSync(modelsPath, JSON.stringify(modelsJson, null, 2));
-
-            // Reset form
-            setNewModelName("");
-            setNewModelDescription("");
-            setNewModelValue({
-                ANTHROPIC_BASE_URL: "",
-                ANTHROPIC_AUTH_TOKEN: "",
-                ANTHROPIC_MODEL: "",
-                ANTHROPIC_SMALL_FAST_MODEL: "",
-                ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-                ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-                ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
+            const errorMessages = validatedModel.error.issues.map((err: z.ZodIssue) => {
+                const path = err.path.join(".");
+                return `${path}: ${err.message}`;
             });
-
-            setFocusedId('model_selection');
-        } catch (err) {
-            console.error("Failed to save model:", err);
+            const message = `Validation failed:\n${errorMessages.join("\n")}`;
+            setErrorMessage(message);
+            return { ok: false, reason: "validation", message };
         }
+
+        const result = saveModelToFile(validatedModel.data, {
+            allowOverwrite,
+            setOrderIfMissing: true,
+        });
+
+        if (!result.ok) {
+            if (result.reason !== "duplicate") {
+                setErrorMessage(result.message);
+            }
+            return result;
+        }
+
+        setNewModelName("");
+        setNewModelDescription("");
+        setNewModelValue({
+            ANTHROPIC_BASE_URL: "",
+            ANTHROPIC_AUTH_TOKEN: "",
+            ANTHROPIC_MODEL: "",
+            ANTHROPIC_SMALL_FAST_MODEL: "",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
+        });
+        setErrorMessage(null);
+        setFocusedId('model_selection');
+        return result;
     }, [newModelName, newModelDescription, newModelValue, setFocusedId]);
 
+    const resetForm = useCallback(() => {
+        setNewModelName("");
+        setNewModelDescription("");
+        setNewModelValue({
+            ANTHROPIC_BASE_URL: "",
+            ANTHROPIC_AUTH_TOKEN: "",
+            ANTHROPIC_MODEL: "",
+            ANTHROPIC_SMALL_FAST_MODEL: "",
+            ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+            ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+            ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+        });
+        setActiveFieldIndex(0);
+        setErrorMessage(null);
+    }, []);
+
     useKeyboard((key) => {
-        if (!isFocused || isConfirmOpen) return;
+        if (!isFocused || isConfirmOpen || isOverwriteConfirmOpen) return;
 
         const TOTAL_FIELDS = 9;
 
@@ -144,7 +164,7 @@ export function NewModelForm() {
 
     useEffect(() => {
         setExitGuard("new_model", (key) => {
-            if (isConfirmOpen) {
+            if (isConfirmOpen || isOverwriteConfirmOpen) {
                 return true;
             }
             if (!isDirty) return false;
@@ -156,7 +176,7 @@ export function NewModelForm() {
         });
 
         return () => clearExitGuard("new_model");
-    }, [clearExitGuard, isConfirmOpen, isDirty, openConfirm, setExitGuard]);
+    }, [clearExitGuard, isConfirmOpen, isDirty, isOverwriteConfirmOpen, openConfirm, setExitGuard]);
 
     if (!isFocused) {
         return null;
@@ -194,6 +214,36 @@ export function NewModelForm() {
                     Fill in the details below to add a new model configuration.
                 </text>
 
+                {/* Error Message Display */}
+                {errorMessage && (
+                    <box 
+                        flexDirection="column"
+                        style={{
+                            border: true,
+                            borderStyle: "rounded",
+                            borderColor: "#ef4444", // Red border for errors
+                            backgroundColor: "#1f1f1f", // Dark background
+                            paddingLeft: 1,
+                            paddingRight: 1,
+                            paddingTop: 1,
+                            paddingBottom: 1,
+                            marginBottom: 1,
+                        }}
+                    >
+                        <text 
+                            attributes={TextAttributes.BOLD}
+                            style={{ fg: "#ef4444", marginBottom: 1 }}
+                        >
+                            Error
+                        </text>
+                        {errorMessage.split("\n").map((line, idx) => (
+                            <text key={idx} style={{ fg: theme.colors.text.primary }}>
+                                {line}
+                            </text>
+                        ))}
+                    </box>
+                )}
+
                 {/* Model Identity Section */}
                 <box flexDirection="column" gap={0}>
                     <text 
@@ -208,7 +258,11 @@ export function NewModelForm() {
                         value={newModelName} 
                         isFocused={activeFieldIndex === 0} 
                         editMode={true}
-                        onChange={(value) => setNewModelName(value)} 
+                        onChange={(value) => {
+                            setNewModelName(value);
+                            // Clear error when user starts typing
+                            if (errorMessage) setErrorMessage(null);
+                        }} 
                         placeholder="e.g. My Custom Model"
                     />
                     
@@ -297,7 +351,7 @@ export function NewModelForm() {
                 {/* Footer hints */}
                 <box marginTop={1} paddingTop={1}>
                      <text style={{ fg: theme.colors.text.muted }}>
-                        [Enter] Save   [Esc] Cancel   [Ctrl+C] Copy   [Ctrl+V] Paste
+                        [Enter] Save   [Esc] Cancel   [Cmd+C / Ctrl+Shift+C] Copy   [Cmd+V / Ctrl+V] Paste
                      </text>
                 </box>
             </box>
@@ -309,10 +363,31 @@ export function NewModelForm() {
             confirmLabel="Save"
             cancelLabel="Cancel"
             onConfirm={() => {
-                handleSave();
+                const result = handleSave(false);
+                closeConfirm();
+                if (!result.ok && result.reason === "duplicate") {
+                    openOverwriteConfirm();
+                }
+            }}
+            onCancel={() => {
+                resetForm();
+                setFocusedId("model_selection");
                 closeConfirm();
             }}
-            onCancel={closeConfirm}
+        />
+        <ConfirmModal
+            isOpen={isOverwriteConfirmOpen}
+            title="Overwrite existing model?"
+            message="A model with this name already exists. Do you want to overwrite it?"
+            confirmLabel="Overwrite"
+            cancelLabel="Cancel"
+            onConfirm={() => {
+                handleSave(true);
+                closeOverwriteConfirm();
+            }}
+            onCancel={() => {
+                closeOverwriteConfirm();
+            }}
         />
     </>
     );
