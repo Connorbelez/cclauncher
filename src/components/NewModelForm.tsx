@@ -235,7 +235,7 @@ export function NewModelForm() {
                 {/* Footer hints */}
                 <box marginTop={1} paddingTop={1}>
                      <text style={{ fg: theme.colors.text.muted }}>
-                        [Enter] Save   [Esc] Cancel
+                        [Enter] Save   [Esc] Cancel   [Ctrl+C] Copy   [Ctrl+V] Paste
                      </text>
                 </box>
             </box>

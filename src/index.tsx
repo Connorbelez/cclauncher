@@ -47,6 +47,47 @@ function App() {
   const [selectedModel, setSelectedModel] = useState<SelectOption>(models[0]!);
   // const { isFocused, focus } = useFocusState("model_selection");
   const renderer = useRenderer();
+  useEffect(() => {
+    const keyInput = (renderer as unknown as { keyInput?: { on?: (event: string, handler: (data: unknown) => void) => void; off?: (event: string, handler: (data: unknown) => void) => void } }).keyInput;
+    if (!keyInput?.on) {
+      return;
+    }
+    const onKeypress = (event: unknown) => {
+      const key = event as { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; super?: boolean; option?: boolean; code?: string };
+      if (key.name === "c" && key.ctrl && !key.shift) {
+        renderer.destroy();
+        process.exit(0);
+        return;
+      }
+    };
+    keyInput.on("keypress", onKeypress);
+    return () => {
+      keyInput.off?.("keypress", onKeypress);
+    };
+  }, [renderer]);
+  useEffect(() => {
+    const stdinBuffer = (renderer as unknown as { _stdinBuffer?: { on?: (event: string, handler: (data: unknown) => void) => void; off?: (event: string, handler: (data: unknown) => void) => void } })._stdinBuffer;
+    if (!stdinBuffer?.on) {
+      return;
+    }
+    const onPaste = (data: unknown) => {
+      const text = typeof data === "string" ? data : "";
+      const keyInput = (renderer as unknown as { keyInput?: { processPaste?: (text: string) => void } }).keyInput;
+      const focused = (renderer as unknown as { currentFocusedRenderable?: { constructor?: { name?: string }; value?: unknown; insertText?: (text: string) => void } }).currentFocusedRenderable;
+      const beforeLength = typeof focused?.value === "string" ? focused.value.length : null;
+      if (typeof keyInput?.processPaste === "function") {
+        keyInput.processPaste(text);
+      }
+      const afterLength = typeof focused?.value === "string" ? focused.value.length : null;
+      if (typeof focused?.insertText === "function" && beforeLength !== null && afterLength === beforeLength) {
+        focused.insertText(text);
+      }
+    };
+    stdinBuffer.on("paste", onPaste);
+    return () => {
+      stdinBuffer.off?.("paste", onPaste);
+    };
+  }, [renderer]);
   // useEffect(() => {
   //   renderer.console.show();
   //   console.log("App started! Logs are being forwarded...");
@@ -87,5 +128,14 @@ function App() {
   );
 }
 
-const renderer = await createCliRenderer();
+const renderer = await createCliRenderer({
+  exitOnCtrlC: false,
+  useKittyKeyboard: {
+    disambiguate: true,
+    alternateKeys: true,
+    events: true,
+    allKeysAsEscapes: false,
+    reportText: false,
+  },
+});
 createRoot(renderer).render(<App />);

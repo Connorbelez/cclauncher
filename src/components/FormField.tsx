@@ -1,5 +1,7 @@
 import { theme } from "@/theme";
+import { writeClipboard, readClipboard } from "@/utils/clipboard";
 import { TextAttributes } from "@opentui/core";
+import { useKeyboard } from "@opentui/react";
 
 interface FormFieldProps {
     label: string;
@@ -22,7 +24,21 @@ export function FormField({
     isPassword = false,
     width = "100%"
 }: FormFieldProps) {
-    
+    const handleInput = (nextValue: string) => {
+        onChange?.(nextValue);
+    };
+
+    useKeyboard((key) => {
+        if (!isFocused) return;
+        if (((key.meta || (key as { super?: boolean }).super) && key.name === "c") || (key.ctrl && key.shift && key.name === "c")) {
+            void writeClipboard(value);
+        }
+
+        if ((key.meta || key.ctrl || (key as { super?: boolean }).super) && key.name === "v" && onChange) {
+            void readClipboard().then((text) => onChange(text));
+        }
+    });
+
     return (
         <box flexDirection="column" style={{ width: width as "100%" | `${number}%` | number, marginBottom: 1 }}>
             {editMode ? (
@@ -50,7 +66,7 @@ export function FormField({
                             value={value} 
                             placeholder={placeholder}
                             focused={isFocused}
-                            onInput={onChange}
+                            onInput={onChange ? handleInput : undefined}
                             style={{
                                 textColor: theme.colors.text.primary,
                                 backgroundColor: theme.colors.background, // Match container
