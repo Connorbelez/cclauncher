@@ -1,6 +1,6 @@
 import type { SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import { theme } from "@/theme";
 
@@ -12,10 +12,13 @@ export type ModelSelectionProps = {
     onReorderEnd: () => void;
     moveMode: boolean;
     onMoveModeChange: (moveMode: boolean) => void;
+    onLaunch?: (model: SelectOption) => void;
+    onDelete?: (model: SelectOption) => void;
 }
 
-export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd, moveMode, onMoveModeChange }: ModelSelectionProps) {
+export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd, moveMode, onMoveModeChange, onLaunch, onDelete }: ModelSelectionProps) {
     const { isFocused, focusedId, editMode } = useFocusState("model_selection");
+    const [confirmDelete, setConfirmDelete] = useState(false);
 
     const selectedIndex = useMemo(() => {
         const index = models.findIndex((model) => model.name === selectedModel.name);
@@ -24,6 +27,17 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
 
     useKeyboard((key) => {
         if (!isFocused) {
+            return;
+        }
+
+        // Handle delete confirmation
+        if (confirmDelete) {
+            if (key.name === "y" || key.name === "return") {
+                onDelete?.(selectedModel);
+                setConfirmDelete(false);
+            } else if (key.name === "n" || key.name === "escape") {
+                setConfirmDelete(false);
+            }
             return;
         }
 
@@ -38,6 +52,18 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
         if (moveMode && (key.name === "return" || key.name === "escape")) {
             onMoveModeChange(false);
             onReorderEnd();
+            return;
+        }
+
+        // Launch on Enter when not in move mode
+        if (!moveMode && key.name === "return" && onLaunch) {
+            onLaunch(selectedModel);
+            return;
+        }
+
+        // Delete on 'd' when not in move mode
+        if (!moveMode && key.name === "d" && onDelete) {
+            setConfirmDelete(true);
             return;
         }
 
@@ -117,19 +143,21 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
                 />
             </scrollbox>
             {/* Keyboard hints */}
-            <box 
-                style={{ 
-                    paddingLeft: 1, 
+            <box
+                style={{
+                    paddingLeft: 1,
                     paddingTop: 0,
                     height: 1,
                 }}
             >
-                <text style={{ fg: theme.colors.text.muted }}>
-                    {isActive
-                        ? moveMode
-                            ? "[↑↓] Move  [m/Enter/Esc] Save & Exit"
-                            : "[↑↓] Navigate  [Enter] Edit  [m] Reorder  [n] New Model"
-                        : "[Tab] Focus"}
+                <text style={{ fg: confirmDelete ? theme.colors.error : theme.colors.text.muted }}>
+                    {confirmDelete
+                        ? `Delete "${selectedModel.name}"? [y] Yes  [n/Esc] Cancel`
+                        : isActive
+                            ? moveMode
+                                ? "[↑↓] Move  [m/Enter/Esc] Save & Exit"
+                                : "[↑↓] Navigate  [Enter] Launch  [m] Reorder  [d] Delete"
+                            : "[Tab] Focus"}
                 </text>
             </box>
         </box>
