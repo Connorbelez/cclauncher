@@ -1,6 +1,6 @@
 import type { SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import { theme } from "@/theme";
 
@@ -10,11 +10,12 @@ export type ModelSelectionProps = {
     selectedModel: SelectOption;
     onMove: (fromIndex: number, direction: "up" | "down") => void;
     onReorderEnd: () => void;
+    moveMode: boolean;
+    onMoveModeChange: (moveMode: boolean) => void;
 }
 
-export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd }: ModelSelectionProps) {
-    const { isFocused, focusedId } = useFocusState("model_selection");
-    const [reorderMode, setReorderMode] = useState(false);
+export function ModelSelection({ models, onSelect, selectedModel, onMove, onReorderEnd, moveMode, onMoveModeChange }: ModelSelectionProps) {
+    const { isFocused, focusedId, editMode } = useFocusState("model_selection");
 
     const selectedIndex = useMemo(() => {
         const index = models.findIndex((model) => model.name === selectedModel.name);
@@ -27,22 +28,20 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
         }
 
         if (key.name === "m") {
-            setReorderMode((prev) => {
-                if (prev) {
-                    onReorderEnd();
-                }
-                return !prev;
-            });
+            onMoveModeChange(!moveMode);
+            if (moveMode) {
+                onReorderEnd();
+            }
             return;
         }
 
-        if (reorderMode && (key.name === "return" || key.name === "escape")) {
-            setReorderMode(false);
+        if (moveMode && (key.name === "return" || key.name === "escape")) {
+            onMoveModeChange(false);
             onReorderEnd();
             return;
         }
 
-        if (!reorderMode) {
+        if (!moveMode) {
             return;
         }
 
@@ -60,7 +59,12 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
     }
 
     const isActive = isFocused;
-    const selectFocused = isFocused && !reorderMode;
+    const selectFocused = isFocused && !moveMode;
+    const borderColor = moveMode
+        ? theme.colors.success
+        : editMode
+            ? theme.colors.primary
+            : theme.colors.secondary;
 
     return (
         <box flexDirection="column" style={{ width: "100%", height: "80%" }}>
@@ -71,7 +75,7 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
                     height: "100%",
                     border: true,
                     borderStyle: isActive ? "double" : "rounded",
-                    borderColor: isActive ? theme.colors.primary : theme.colors.border,
+                    borderColor: borderColor,
                     rootOptions: {
                         backgroundColor: theme.colors.surface,
                     },
@@ -122,7 +126,7 @@ export function ModelSelection({ models, onSelect, selectedModel, onMove, onReor
             >
                 <text style={{ fg: theme.colors.text.muted }}>
                     {isActive
-                        ? reorderMode
+                        ? moveMode
                             ? "[↑↓] Move  [m/Enter/Esc] Save & Exit"
                             : "[↑↓] Navigate  [Enter] Edit  [m] Reorder  [n] New Model"
                         : "[Tab] Focus"}
