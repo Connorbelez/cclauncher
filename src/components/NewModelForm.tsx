@@ -1,9 +1,11 @@
 import { useState } from "react";
-
 import { useKeyboard } from "@opentui/react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import fs from "fs";
 import { z } from "zod";
+import { theme } from "@/theme";
+import { FormField } from "./FormField";
+import { TextAttributes } from "@opentui/core";
 
 const newModelSchema = z.object({
     name: z.string(),
@@ -18,14 +20,8 @@ const newModelSchema = z.object({
         ANTHROPIC_DEFAULT_HAIKU_MODEL: z.string(),
     }),
 });
+
 export function NewModelForm() {
-    // "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropica",
-    // "ANTHROPIC_AUTH_TOKEN": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJHcm91cE5hbWUiOiJDb25ub3IgQmVsZXpuYXkiLCJVc2VyTmFtZSI6IkNvbm5vciBCZWxlem5heSIsIkFjY291bnQiOiIiLCJTdWJqZWN0SUQiOiIxOTgzOTY4MDkwMzc4OTk4MzI5IiwiUGhvbmUiOiIiLCJHcm91cElEIjoiMTk4Mzk2ODA4Mzg1MjY2NTQwMiIsIlBhZ2VOYW1lIjoiIiwiTWFpbCI6ImMuYmVsZXpuYXlAaHVtYW5mZWVkYmFjay5jb20iLCJDcmVhdGVUaW1lIjoiMjAyNS0xMC0zMSAwMzo0MDoyNCIsIlRva2VuVHlwZSI6MSwiaXNzIjoibWluaW1heCJ9.J8Tq28tm8HGn551zM2wgdN9X0tpE5Rxo5AAg7bHg_rtc-VAyHFuJmxM1PHGwXNAKOgh6jq5eGSLPPRdeM0MKLP32G5WFRzZIB3cyxehiGcr_mlfmeRBe6p11qmS1ooHE7AMEo6XrfLvdh2CPq51YlDED3EynINWodnmm8IzxWenEXN8xVFvq3VcEnJbhe_97hFt6HhXMGOB9RmY37XdvIXzWH1u80tFH7sDDin9RC12O27waP8xL9wHlPy4OcvI2eyrVhVM0lUNFt4d9DvJoEjf9SeyT91EJrP6xlAl3Ug2jwbLOmtoDAwn_jol5Ng81ZmiZEMk_nYH4NZRk0gp84w",
-    // "ANTHROPIC_MODEL": "MiniMax-M2",
-    // "ANTHROPIC_SMALL_FAST_MODEL": "MiniMax-M2",
-    // "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2",
-    // "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2",
-    // "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2"
     const { isFocused, setFocusedId, focusedId } = useFocusState("new_model");
     const [newModelName, setNewModelName] = useState("");
     const [newModelDescription, setNewModelDescription] = useState("");
@@ -41,75 +37,208 @@ export function NewModelForm() {
     const [activeFieldIndex, setActiveFieldIndex] = useState(0);
 
     useKeyboard((key) => {
+        if (!isFocused) return;
+
+        const TOTAL_FIELDS = 9;
+
         if (key.name === 'down') {
-            setActiveFieldIndex(prev => (prev + 1) % 9);
+            setActiveFieldIndex(prev => (prev + 1) % TOTAL_FIELDS);
         } else if (key.name === 'up') {
-            setActiveFieldIndex(prev => (prev - 1 + 9) % 9);
+            setActiveFieldIndex(prev => (prev - 1 + TOTAL_FIELDS) % TOTAL_FIELDS);
         }
-        else if (key.name === 'return' && focusedId === 'new_model') {
+        else if (key.name === 'escape') {
+            setFocusedId('model_selection');
+        }
+        else if (key.name === 'return') {
             console.log("Creating new model");
-            setNewModelName(newModelName);
-            setNewModelDescription(newModelDescription);
-            setNewModelValue(newModelValue);
-            //Write the model to the models.json file
+            
+            // Basic validation
+            if (!newModelName) {
+                // In a real app we'd show an error message
+                return;
+            }
+
             const validatedModel = newModelSchema.safeParse({
                 name: newModelName,
                 description: newModelDescription,
                 value: newModelValue
             });
+
             if (!validatedModel.success) {
                 console.error("Invalid model:", validatedModel.error);
                 return;
             }
-            const modelsJson = JSON.parse(fs.readFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", "utf8"));
-            modelsJson[validatedModel.data.name] = validatedModel.data;
-            fs.writeFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", JSON.stringify(modelsJson, null, 2));
-            setFocusedId('model_selection');
-        }
 
+            try {
+                // In a real implementation this should probably use an absolute path or be configurable
+                const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
+                const modelsJson = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
+                modelsJson[validatedModel.data.name] = validatedModel.data;
+                fs.writeFileSync(modelsPath, JSON.stringify(modelsJson, null, 2));
+                
+                // Reset form
+                setNewModelName("");
+                setNewModelDescription("");
+                setNewModelValue({
+                    ANTHROPIC_BASE_URL: "",
+                    ANTHROPIC_AUTH_TOKEN: "",
+                    ANTHROPIC_MODEL: "",
+                    ANTHROPIC_SMALL_FAST_MODEL: "",
+                    ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+                    ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+                    ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
+                });
+                
+                setFocusedId('model_selection');
+            } catch (err) {
+                console.error("Failed to save model:", err);
+            }
+        }
     });
 
     if (!isFocused) {
         return null;
     }
+
     return (
-        <box title="New Model" style={{ border: true, width: "100%", height: "100%", flexDirection: "column", gap: 1, padding: 1 }}>
-            <box flexDirection="row" gap={1}>
-                <text>Name:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelName} focused={activeFieldIndex === 0} onInput={(value) => setNewModelName(value)} />
+        <scrollbox
+            title="Create New Model"
+            style={{ 
+                width: "100%",
+                height: "100%",
+                border: true,
+                borderStyle: "rounded",
+                borderColor: theme.colors.primary,
+                rootOptions: {
+                    backgroundColor: theme.colors.surface,
+                },
+                viewportOptions: {
+                    backgroundColor: theme.colors.background,
+                },
+                contentOptions: {
+                    backgroundColor: theme.colors.background,
+                },
+                scrollbarOptions: {
+                    showArrows: true,
+                    trackOptions: {
+                        foregroundColor: theme.colors.primary,
+                        backgroundColor: theme.colors.border,
+                    },
+                },
+            }}
+        >
+            <box flexDirection="column" padding={1} gap={1}>
+                <text style={{ fg: theme.colors.text.secondary, marginBottom: 1 }}>
+                    Fill in the details below to add a new model configuration.
+                </text>
+
+                {/* Model Identity Section */}
+                <box flexDirection="column" gap={0}>
+                    <text 
+                        attributes={TextAttributes.UNDERLINE} 
+                        style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+                    >
+                        Model Identity
+                    </text>
+                    
+                    <FormField 
+                        label="Name *" 
+                        value={newModelName} 
+                        isFocused={activeFieldIndex === 0} 
+                        editMode={true}
+                        onChange={(value) => setNewModelName(value)} 
+                        placeholder="e.g. My Custom Model"
+                    />
+                    
+                    <FormField 
+                        label="Description" 
+                        value={newModelDescription} 
+                        isFocused={activeFieldIndex === 1} 
+                        editMode={true}
+                        onChange={(value) => setNewModelDescription(value)} 
+                        placeholder="Brief description of usage"
+                    />
+                </box>
+
+                {/* API Configuration Section */}
+                <box flexDirection="column" gap={0} marginTop={1}>
+                    <text 
+                        attributes={TextAttributes.UNDERLINE} 
+                        style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+                    >
+                        API Configuration
+                    </text>
+
+                    <FormField 
+                        label="Base URL" 
+                        value={newModelValue.ANTHROPIC_BASE_URL} 
+                        isFocused={activeFieldIndex === 2} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_BASE_URL: value})} 
+                        placeholder="https://api.anthropic.com"
+                    />
+
+                    <FormField 
+                        label="Auth Token" 
+                        value={newModelValue.ANTHROPIC_AUTH_TOKEN} 
+                        isFocused={activeFieldIndex === 3} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_AUTH_TOKEN: value})} 
+                        isPassword={true}
+                    />
+
+                    <FormField 
+                        label="Model" 
+                        value={newModelValue.ANTHROPIC_MODEL} 
+                        isFocused={activeFieldIndex === 4} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_MODEL: value})} 
+                    />
+
+                    <FormField 
+                        label="Small Fast Model" 
+                        value={newModelValue.ANTHROPIC_SMALL_FAST_MODEL} 
+                        isFocused={activeFieldIndex === 5} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_SMALL_FAST_MODEL: value})} 
+                        placeholder="e.g. claude-3-haiku-20240307"
+                    />
+
+                    <FormField 
+                        label="Sonnet Model" 
+                        value={newModelValue.ANTHROPIC_DEFAULT_SONNET_MODEL} 
+                        isFocused={activeFieldIndex === 6} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_SONNET_MODEL: value})} 
+                        placeholder="e.g. claude-3-5-sonnet-20240620"
+                    />
+
+                    <FormField 
+                        label="Opus Model" 
+                        value={newModelValue.ANTHROPIC_DEFAULT_OPUS_MODEL} 
+                        isFocused={activeFieldIndex === 7} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_OPUS_MODEL: value})} 
+                        placeholder="e.g. claude-3-opus-20240229"
+                    />
+
+                    <FormField 
+                        label="Haiku Model" 
+                        value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL} 
+                        isFocused={activeFieldIndex === 8} 
+                        editMode={true}
+                        onChange={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_HAIKU_MODEL: value})} 
+                        placeholder="e.g. claude-3-haiku-20240307"
+                    />
+                </box>
+                
+                {/* Footer hints */}
+                <box marginTop={1} paddingTop={1}>
+                     <text style={{ fg: theme.colors.text.muted }}>
+                        [Enter] Save   [Esc] Cancel
+                     </text>
+                </box>
             </box>
-            <box flexDirection="row" gap={1}>
-                <text>Description:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelDescription} focused={activeFieldIndex === 1} onInput={(value) => setNewModelDescription(value)} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Base URL:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_BASE_URL} focused={activeFieldIndex === 2} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_BASE_URL: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Auth Token:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_AUTH_TOKEN} focused={activeFieldIndex === 3} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_AUTH_TOKEN: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Model:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_MODEL} focused={activeFieldIndex === 4} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_MODEL: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Small Fast Model:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_SMALL_FAST_MODEL} focused={activeFieldIndex === 5} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_SMALL_FAST_MODEL: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Default Sonnet Model:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_DEFAULT_SONNET_MODEL} focused={activeFieldIndex === 6} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_SONNET_MODEL: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Default Opus Model:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_DEFAULT_OPUS_MODEL} focused={activeFieldIndex === 7} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_OPUS_MODEL: value})} />
-            </box>
-            <box flexDirection="row" gap={1}>
-                <text>Default Haiku Model:</text>
-                <input style={{ width: "70%", backgroundColor: "blue" }} value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL} focused={activeFieldIndex === 8} onInput={(value) => setNewModelValue({...newModelValue, ANTHROPIC_DEFAULT_HAIKU_MODEL: value})} />
-            </box>
-        </box>
+        </scrollbox>
     );
 }
