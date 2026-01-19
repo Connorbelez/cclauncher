@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import fs from "fs";
@@ -6,10 +6,12 @@ import { z } from "zod";
 import { theme } from "@/theme";
 import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
+import { ConfirmModal } from "./ConfirmModal";
 
 const newModelSchema = z.object({
     name: z.string(),
     description: z.string(),
+    order: z.number().optional(),
     value: z.object({
         ANTHROPIC_BASE_URL: z.string(),
         ANTHROPIC_AUTH_TOKEN: z.string(),
@@ -22,7 +24,7 @@ const newModelSchema = z.object({
 });
 
 export function NewModelForm() {
-    const { isFocused, setFocusedId, focusedId } = useFocusState("new_model");
+    const { isFocused, setFocusedId, focusedId, setModalOpen, setExitGuard, clearExitGuard } = useFocusState("new_model");
     const [newModelName, setNewModelName] = useState("");
     const [newModelDescription, setNewModelDescription] = useState("");
     const [newModelValue, setNewModelValue] = useState({
@@ -35,9 +37,89 @@ export function NewModelForm() {
         ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
     });
     const [activeFieldIndex, setActiveFieldIndex] = useState(0);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
+    const isDirty = useMemo(() => {
+        return Boolean(
+            newModelName ||
+            newModelDescription ||
+            newModelValue.ANTHROPIC_BASE_URL ||
+            newModelValue.ANTHROPIC_AUTH_TOKEN ||
+            newModelValue.ANTHROPIC_MODEL ||
+            newModelValue.ANTHROPIC_SMALL_FAST_MODEL ||
+            newModelValue.ANTHROPIC_DEFAULT_SONNET_MODEL ||
+            newModelValue.ANTHROPIC_DEFAULT_OPUS_MODEL ||
+            newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL
+        );
+    }, [newModelName, newModelDescription, newModelValue]);
+
+    const openConfirm = useCallback(() => {
+        setIsConfirmOpen(true);
+        setModalOpen(true);
+    }, [setModalOpen]);
+
+    const closeConfirm = useCallback(() => {
+        setIsConfirmOpen(false);
+        setModalOpen(false);
+    }, [setModalOpen]);
+
+    const handleSave = useCallback(() => {
+        console.log("Creating new model");
+
+        // Basic validation
+        if (!newModelName) {
+            // In a real app we'd show an error message
+            return;
+        }
+
+        const validatedModel = newModelSchema.safeParse({
+            name: newModelName,
+            description: newModelDescription,
+            value: newModelValue
+        });
+
+        if (!validatedModel.success) {
+            console.error("Invalid model:", validatedModel.error);
+            return;
+        }
+
+        try {
+            // In a real implementation this should probably use an absolute path or be configurable
+            const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
+            const modelsJson = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
+            
+            // Calculate new order
+            const orders = Object.values(modelsJson).map((m: any) => m.order ?? 0);
+            const maxOrder = Math.max(...orders as number[], -1);
+            const newOrder = maxOrder + 1;
+            
+            modelsJson[validatedModel.data.name] = {
+                ...validatedModel.data,
+                order: newOrder
+            };
+            fs.writeFileSync(modelsPath, JSON.stringify(modelsJson, null, 2));
+
+            // Reset form
+            setNewModelName("");
+            setNewModelDescription("");
+            setNewModelValue({
+                ANTHROPIC_BASE_URL: "",
+                ANTHROPIC_AUTH_TOKEN: "",
+                ANTHROPIC_MODEL: "",
+                ANTHROPIC_SMALL_FAST_MODEL: "",
+                ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+                ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+                ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
+            });
+
+            setFocusedId('model_selection');
+        } catch (err) {
+            console.error("Failed to save model:", err);
+        }
+    }, [newModelName, newModelDescription, newModelValue, setFocusedId]);
 
     useKeyboard((key) => {
-        if (!isFocused) return;
+        if (!isFocused || isConfirmOpen) return;
 
         const TOTAL_FIELDS = 9;
 
@@ -47,60 +129,40 @@ export function NewModelForm() {
             setActiveFieldIndex(prev => (prev - 1 + TOTAL_FIELDS) % TOTAL_FIELDS);
         }
         else if (key.name === 'escape') {
+            if (isDirty) {
+                openConfirm();
+                return;
+            }
             setFocusedId('model_selection');
         }
         else if (key.name === 'return') {
-            console.log("Creating new model");
-            
-            // Basic validation
-            if (!newModelName) {
-                // In a real app we'd show an error message
-                return;
-            }
-
-            const validatedModel = newModelSchema.safeParse({
-                name: newModelName,
-                description: newModelDescription,
-                value: newModelValue
-            });
-
-            if (!validatedModel.success) {
-                console.error("Invalid model:", validatedModel.error);
-                return;
-            }
-
-            try {
-                // In a real implementation this should probably use an absolute path or be configurable
-                const modelsPath = "/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json";
-                const modelsJson = JSON.parse(fs.readFileSync(modelsPath, "utf8"));
-                modelsJson[validatedModel.data.name] = validatedModel.data;
-                fs.writeFileSync(modelsPath, JSON.stringify(modelsJson, null, 2));
-                
-                // Reset form
-                setNewModelName("");
-                setNewModelDescription("");
-                setNewModelValue({
-                    ANTHROPIC_BASE_URL: "",
-                    ANTHROPIC_AUTH_TOKEN: "",
-                    ANTHROPIC_MODEL: "",
-                    ANTHROPIC_SMALL_FAST_MODEL: "",
-                    ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-                    ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-                    ANTHROPIC_DEFAULT_HAIKU_MODEL: ""
-                });
-                
-                setFocusedId('model_selection');
-            } catch (err) {
-                console.error("Failed to save model:", err);
+            if (isDirty) {
+                openConfirm();
             }
         }
     });
+
+    useEffect(() => {
+        setExitGuard("new_model", (key) => {
+            if (isConfirmOpen) {
+                return true;
+            }
+            if (!isDirty) return false;
+            if (key.name === "tab") {
+                openConfirm();
+                return true;
+            }
+            return false;
+        });
+
+        return () => clearExitGuard("new_model");
+    }, [clearExitGuard, isConfirmOpen, isDirty, openConfirm, setExitGuard]);
 
     if (!isFocused) {
         return null;
     }
 
-    return (
+    return (<>
         <scrollbox
             title="Create New Model"
             style={{ 
@@ -240,5 +302,18 @@ export function NewModelForm() {
                 </box>
             </box>
         </scrollbox>
+        <ConfirmModal
+            isOpen={isConfirmOpen}
+            title="Create model?"
+            message="Do you want to save this new model?"
+            confirmLabel="Save"
+            cancelLabel="Cancel"
+            onConfirm={() => {
+                handleSave();
+                closeConfirm();
+            }}
+            onCancel={closeConfirm}
+        />
+    </>
     );
 }
