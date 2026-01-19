@@ -9,6 +9,10 @@ interface FocusContextType {
   editMode: boolean;
   setEditMode: (editMode: boolean) => void;
   setFocusedId: (id: string) => void;
+  isModalOpen: boolean;
+  setModalOpen: (isOpen: boolean) => void;
+  setExitGuard: (id: string, guard: (key: { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean }) => boolean) => void;
+  clearExitGuard: (id: string) => void;
 }
 
 const FocusContext = createContext<FocusContextType | undefined>(undefined);
@@ -17,6 +21,8 @@ export function FocusProvider({ children, order }: { children: React.ReactNode, 
   const [registry, setRegistry] = useState<string[]>([]);
   const [focusedId, setFocusedId] = useState<string | undefined>(order[0] || undefined);
   const [editMode, setEditMode] = useState(false);
+  const [isModalOpen, setModalOpen] = useState(false);
+  const exitGuards = useMemo(() => new Map<string, (key: { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean }) => boolean>(), []);
 
   const register = useCallback((id: string) => {
     setRegistry(prev => [...prev, id]); // Add to the focusable list
@@ -28,6 +34,13 @@ export function FocusProvider({ children, order }: { children: React.ReactNode, 
   }, []);
   // Global Tab navigation handler
   useKeyboard((key) => {
+    const guard = focusedId ? exitGuards.get(focusedId) : undefined;
+    if (guard && guard(key)) {
+      return;
+    }
+    if (isModalOpen) {
+      return;
+    }
     if (key.name === 'tab') {
       const index = registry.indexOf(focusedId || '');
       const nextIndex = key.shift ? (index - 1 + registry.length) % registry.length : (index + 1) % registry.length;
@@ -63,6 +76,14 @@ export function FocusProvider({ children, order }: { children: React.ReactNode, 
 
   });
 
+  const setExitGuard = useCallback((id: string, guard: (key: { name: string; shift?: boolean; ctrl?: boolean; meta?: boolean }) => boolean) => {
+    exitGuards.set(id, guard);
+  }, [exitGuards]);
+
+  const clearExitGuard = useCallback((id: string) => {
+    exitGuards.delete(id);
+  }, [exitGuards]);
+
   const value = useMemo(() => ({
     focusedId,
     register,
@@ -71,7 +92,11 @@ export function FocusProvider({ children, order }: { children: React.ReactNode, 
     editMode,
     setEditMode,
     setFocusedId,
-  }), [focusedId, register, unregister, editMode, setFocusedId]);
+    isModalOpen,
+    setModalOpen,
+    setExitGuard,
+    clearExitGuard,
+  }), [focusedId, register, unregister, editMode, setFocusedId, isModalOpen, setModalOpen, setExitGuard, clearExitGuard]);
 
   return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
 }
@@ -85,12 +110,12 @@ export const useFocusContext = () => {
 export const useFocusState = (id: string) => {
     const context = useContext(FocusContext);
     if (!context) throw new Error("useFocusState must be used within FocusProvider");
-    const { register, unregister, focusedId, editMode, setEditMode, setFocusedId } = context;
+    const { register, unregister, focusedId, editMode, setEditMode, setFocusedId, isModalOpen, setModalOpen, setExitGuard, clearExitGuard } = context;
   
     useEffect(() => {
       register(id); // I am here! Add me to the Tab order.
       return () => unregister(id); // I am gone! Remove me from the Tab order.
     }, [id, register, unregister]);
   
-    return { isFocused: focusedId === id, focus: () => context.focusId(id), editMode, setEditMode, setFocusedId, focusedId };
+    return { isFocused: focusedId === id, focus: () => context.focusId(id), editMode, setEditMode, setFocusedId, focusedId, isModalOpen, setModalOpen, setExitGuard, clearExitGuard };
   };
