@@ -26,8 +26,8 @@ const modelSchema = z.object({
   }),
 });
 
-const saveModel = (model: SelectOption) => {
-  console.log("Saving model:", model);
+const saveModel = (model: SelectOption, originalName?: string) => {
+  console.log("Saving model:", model, "original name:", originalName);
   //Validate 
   const validatedModel = modelSchema.safeParse(model);
   if (!validatedModel.success) {
@@ -35,11 +35,16 @@ const saveModel = (model: SelectOption) => {
     return;
   }
   //Save model to models.json
-  //update the models.json file with the new model, only update the model with the name of the model
+  //update the models.json file with the new model, using original name as key
   const modelsJson = JSON.parse(fs.readFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", "utf8"));
+  
+  // If we have an original name and it's different from the new name, delete the old entry
+  if (originalName && originalName !== validatedModel.data.name) {
+    delete modelsJson[originalName];
+  }
+  
   modelsJson[validatedModel.data.name] = validatedModel.data;
   fs.writeFileSync("/Users/connor/Dev/cclauncher/cclaunchv2/src/models.json", JSON.stringify(modelsJson, null, 2));
-  
 }
 function App() {
 
