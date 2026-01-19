@@ -19,6 +19,7 @@ import {
   modelSchema,
 } from "./lib/store";
 import { launchClaudeCode } from "./lib/launcher";
+import { resetTerminalForChild } from "./utils/terminal";
 import modelsJson from "./models.json";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -308,10 +309,19 @@ function App() {
   // Launch Claude Code with selected model
   const handleLaunch = useCallback(
     async (model: SelectOption) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:entry',message:'handleLaunch entry',data:{modelName:model.name},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       setLaunching(true);
 
       // Exit TUI before spawning Claude Code
       renderer.destroy();
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:afterDestroy',message:'renderer.destroy called',data:{destroyCalled:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+
+      // Reset terminal input state so Claude Code inherits a clean TTY
+      resetTerminalForChild();
 
       console.log(`\nLaunching Claude Code with model: ${model.name}`);
       console.log(`Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}\n`);

@@ -1,10 +1,15 @@
 {
-  "name": "cclaunchv2",
+  "name": "claude-model-launcher",
+  "version": "1.0.0",
+  "description": "Launch Claude Code with custom model configurations",
   "module": "src/index.tsx",
   "type": "module",
-  "private": true,
+  "bin": {
+    "claude-launch": "src/index.tsx"
+  },
   "scripts": {
-    "dev": "bun run --watch src/index.tsx"
+    "dev": "bun run --watch src/index.tsx",
+    "start": "bun run src/index.tsx"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -15,6 +20,8 @@
   "dependencies": {
     "@opentui/core": "^0.1.72",
     "@opentui/react": "^0.1.72",
+    "bun-pty": "^0.4.8",
+    "node-pty": "^1.1.0",
     "react": "^19.2.3",
     "zod": "^4.3.5"
   }
