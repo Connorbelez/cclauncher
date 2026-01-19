@@ -14,6 +14,11 @@ export type LaunchResult =
   | { ok: true; exitCode: number }
   | { ok: false; reason: "not_found" | "spawn_failed" | "signal"; message: string };
 
+export type LaunchOptions = {
+  /** Working directory to launch Claude Code in */
+  cwd?: string;
+};
+
 /**
  * Check if Claude Code is installed and available in PATH.
  */
@@ -84,9 +89,10 @@ export function prepareEnvironment(model: Model): Record<string, string> {
  * Launch Claude Code with the given model configuration using bun-pty for proper TTY handling.
  * Falls back to Bun.spawn if bun-pty is unavailable.
  */
-export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
+export async function launchClaudeCode(model: Model, options?: LaunchOptions): Promise<LaunchResult> {
+  const cwd = options?.cwd ?? process.cwd();
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:entry',message:'launchClaudeCode entry',data:{modelName:model.name,bunPtyAvailable:!!bunPtySpawn},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:entry',message:'launchClaudeCode entry',data:{modelName:model.name,bunPtyAvailable:!!bunPtySpawn,cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
   // #endregion
   resetTerminalForChild();
 
@@ -113,7 +119,7 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
   // Try bun-pty first for proper PTY handling
   if (bunPtySpawn) {
     try {
-      return await launchWithPty(env);
+      return await launchWithPty(env, cwd);
     } catch (err) {
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:ptyFailed',message:'bun-pty spawn failed, falling back',data:{error:err instanceof Error ? err.message : String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
@@ -124,11 +130,12 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
 
   // Fallback: Bun.spawn with inherited stdio
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:fallback',message:'Using Bun.spawn fallback',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:fallback',message:'Using Bun.spawn fallback',data:{cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
   // #endregion
   try {
     const proc = Bun.spawn(["claude"], {
       env,
+      cwd,
       stdin: "inherit",
       stdout: "inherit",
       stderr: "inherit",
@@ -149,7 +156,7 @@ export async function launchClaudeCode(model: Model): Promise<LaunchResult> {
  * Launch Claude Code using bun-pty for proper PTY handling.
  * This gives the child process a real TTY with independent input buffering.
  */
-async function launchWithPty(env: Record<string, string>): Promise<LaunchResult> {
+async function launchWithPty(env: Record<string, string>, cwd: string): Promise<LaunchResult> {
   if (!bunPtySpawn) {
     throw new Error("bun-pty not available");
   }
@@ -159,14 +166,14 @@ async function launchWithPty(env: Record<string, string>): Promise<LaunchResult>
   const rows = process.stdout.rows || 24;
 
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawn',message:'Spawning with bun-pty',data:{cols,rows},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
+  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawn',message:'Spawning with bun-pty',data:{cols,rows,cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
   // #endregion
 
   const pty = bunPtySpawn("claude", [], {
     name: "xterm-256color",
     cols,
     rows,
-    cwd: process.cwd(),
+    cwd,
     env,
   });
 
