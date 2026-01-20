@@ -73,6 +73,10 @@ export function FocusProvider({ children, order }: { children: React.ReactNode, 
       setFocusedId('model_selection');
     }
 
+    // 'g' to toggle git worktree selector
+    if (key.name === "g" && focusedId === 'model_selection') {
+      setFocusedId('worktree_selection');
+    }
 
   });
 

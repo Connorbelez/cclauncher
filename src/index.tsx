@@ -20,7 +20,8 @@ import {
 } from "./lib/store";
 import { launchClaudeCode } from "./lib/launcher";
 import { resetTerminalForChild } from "./utils/terminal";
-import { getGitRepoRoot, generateWorktreePath, createDetachedWorktree } from "./lib/git";
+import { getGitRepoRoot, generateWorktreePath, createDetachedWorktree, listWorktrees, type WorktreeInfo } from "./lib/git";
+import { GitWorktreeSelector } from "./components/GitWorktreeSelector";
 import modelsJson from "./models.json";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -183,8 +184,30 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
   const modelsStateRef = useRef(modelsState);
   const [moveMode, setMoveMode] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
+  const [selectedWorktree, setSelectedWorktree] = useState<WorktreeInfo | null>(null);
   const renderer = useRenderer();
   const isGitRepo = gitRepoRoot !== null;
+
+  // Load worktrees on mount (when in a git repo)
+  const loadWorktrees = useCallback(async () => {
+    if (!gitRepoRoot) return;
+    const result = await listWorktrees(gitRepoRoot);
+    if (result.ok) {
+      setWorktrees(result.worktrees);
+      // Select the first worktree if none selected
+      if (result.worktrees.length > 0) {
+        setSelectedWorktree((current) => current ?? result.worktrees[0]!);
+      }
+    }
+  }, [gitRepoRoot]);
+
+  // Load worktrees on initial mount
+  useEffect(() => {
+    if (isGitRepo) {
+      loadWorktrees();
+    }
+  }, [isGitRepo, loadWorktrees]);
 
   // Handle Ctrl+C for graceful exit
   useEffect(() => {
@@ -386,8 +409,63 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
     [selectedModel.name]
   );
 
+  // Launch Claude Code in an existing worktree
+  const handleWorktreeLaunch = useCallback(
+    async (worktree: WorktreeInfo) => {
+      setLaunching(true);
+      renderer.destroy();
+      resetTerminalForChild();
+
+      console.log(`\nLaunching Claude Code in worktree: ${worktree.path}`);
+      console.log(`Branch: ${worktree.branch || "(detached)"}`);
+      console.log(`Model: ${selectedModel.name}`);
+      console.log("");
+
+      const storeModel = selectOptionToModel(selectedModel as SelectOption & { order?: number });
+      const result = await launchClaudeCode(storeModel, { cwd: worktree.path });
+
+      if (!result.ok) {
+        console.error(`\nError: ${result.message}`);
+        process.exit(1);
+      }
+      process.exit(result.exitCode);
+    },
+    [renderer, selectedModel]
+  );
+
+  // Create a new worktree and launch Claude Code in it
+  const handleCreateWorktreeAndLaunch = useCallback(async () => {
+    if (!gitRepoRoot) return;
+
+    setLaunching(true);
+    renderer.destroy();
+    resetTerminalForChild();
+
+    const worktreePath = generateWorktreePath(gitRepoRoot);
+    console.log(`\nCreating worktree at: ${worktreePath}`);
+
+    const worktreeResult = await createDetachedWorktree(gitRepoRoot, worktreePath);
+    if (!worktreeResult.ok) {
+      console.error(`\nError creating worktree: ${worktreeResult.message}`);
+      process.exit(1);
+    }
+
+    console.log(`Worktree created successfully.`);
+    console.log(`Model: ${selectedModel.name}`);
+    console.log("");
+
+    const storeModel = selectOptionToModel(selectedModel as SelectOption & { order?: number });
+    const result = await launchClaudeCode(storeModel, { cwd: worktreeResult.path });
+
+    if (!result.ok) {
+      console.error(`\nError: ${result.message}`);
+      process.exit(1);
+    }
+    process.exit(result.exitCode);
+  }, [renderer, gitRepoRoot, selectedModel]);
+
   return (
-    <FocusProvider order={["model_selection"]}>
+    <FocusProvider order={["model_selection", "worktree_selection"]}>
       <box alignItems="center" justifyContent="center" flexGrow={1}>
         <box justifyContent="center" alignItems="flex-end">
           <ascii-font font="tiny" text="CCLauncher" />
@@ -415,16 +493,34 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
           />
           <ModelDetails model={selectedModel} onSave={saveModel} />
           <NewModelForm />
+          {isGitRepo && (
+            <GitWorktreeSelector
+              worktrees={worktrees}
+              selectedWorktree={selectedWorktree}
+              onSelect={setSelectedWorktree}
+              onLaunch={handleWorktreeLaunch}
+              onCreateNew={handleCreateWorktreeAndLaunch}
+              onRefresh={loadWorktrees}
+              selectedModelName={selectedModel.name}
+            />
+          )}
         </box>
       </box>
       <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1}>
-        <text attributes={TextAttributes.DIM}>Legend:</text>
-        <text attributes={TextAttributes.DIM}>n: New</text>
-        <text attributes={TextAttributes.DIM}>e: Edit</text>
-        <text attributes={TextAttributes.DIM}>Enter: Launch</text>
-        {isGitRepo && <text attributes={TextAttributes.DIM}>w: Worktree</text>}
-        <text attributes={TextAttributes.DIM}>arrows: Navigate</text>
-        <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
+        <text attributes={TextAttributes.DIM}>[n] New</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[e] Edit</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[Enter] Launch</text>
+        {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>[w] New Worktree</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>[g] Git Worktrees</text>}
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[↑↓] Navigate</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[Esc] Exit Edit</text>
+        <text attributes={TextAttributes.DIM}>·</text>
         <ModeIndicator moveMode={moveMode} launching={launching} />
       </box>
     </FocusProvider>

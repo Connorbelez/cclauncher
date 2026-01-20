@@ -27,6 +27,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .cache
 *.tsbuildinfo
 
+# Models configuration (contains secrets)
+models.json
+src/models.json
+
 # IntelliJ based IDEs
 .idea
 
