@@ -24,6 +24,7 @@ import {
 } from "./lib/store";
 import { launchClaudeCode } from "./lib/launcher";
 import { resetTerminalForChild } from "./utils/terminal";
+import type { SaveModelResult } from "./utils/models";
 import {
   getGitRepoRoot,
   generateWorktreePath,
@@ -141,14 +142,6 @@ if (initialModels.length === 0) {
   saveModelToStore(sampleModel);
   initialModels.push(modelToSelectOption(sampleModel));
 }
-
-export type SaveModelResult =
-  | { ok: true }
-  | {
-      ok: false;
-      reason: "validation" | "duplicate" | "read" | "write";
-      message: string;
-    };
 
 const saveModel = (
   model: SelectOption,

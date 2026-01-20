@@ -172,7 +172,7 @@ export function ConfirmModal({
           </box>
         </box>
         <text style={{ fg: theme.colors.text.muted, marginTop: 1 }}>
-          ←/→ Select Enter Confirm Esc Cancel
+          ←/→ Select · Enter Confirm · Esc Cancel
         </text>
       </box>
     </>

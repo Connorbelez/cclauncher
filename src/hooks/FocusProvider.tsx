@@ -73,9 +73,14 @@ export function FocusProvider({
     setFocusedId((curr) => curr ?? id); // Focus the first thing that registers
   }, []);
 
-  const unregister = useCallback((id: string) => {
-    setRegistry((prev) => prev.filter((item) => item !== id)); // Remove from list
-  }, []);
+  const unregister = useCallback(
+    (id: string) => {
+      setRegistry((prev) => prev.filter((item) => item !== id)); // Remove from list
+      exitGuards.delete(id);
+      setFocusedId((curr) => (curr === id ? undefined : curr));
+    },
+    [exitGuards]
+  );
   // Global Tab navigation handler
   useKeyboard((key) => {
     const guard = focusedId ? exitGuards.get(focusedId) : undefined;

@@ -171,7 +171,7 @@ export function GitWorktreeSelector({
         </scrollbox>
         <box style={{ paddingLeft: 1, height: 1 }}>
           <text style={{ fg: theme.colors.text.muted }}>
-            [n] New Worktree [g/Esc] Back
+            [n] New Worktree  [g/Esc] Back
           </text>
         </box>
       </box>

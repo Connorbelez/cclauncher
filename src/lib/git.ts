@@ -156,7 +156,8 @@ export async function createDetachedWorktree(
  */
 export function generateWorktreePath(repoRoot: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  return `${repoRoot}/.worktrees/claude-${timestamp}`;
+  const normalizedRoot = repoRoot.replace(/\/+$/, "");
+  return `${normalizedRoot}/.worktrees/claude-${timestamp}`;
 }
 
 /**
