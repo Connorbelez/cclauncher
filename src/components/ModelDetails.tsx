@@ -29,6 +29,18 @@ const editModelSchema = z.object({
   }),
 });
 
+const EDITABLE_FIELDS = [
+  { key: "name", label: "Name" },
+  { key: "description", label: "Description" },
+  { key: "baseUrl", label: "Base URL" },
+  { key: "authToken", label: "Auth Token" },
+  { key: "model", label: "Model" },
+  { key: "smallFastModel", label: "Small Fast Model" },
+  { key: "sonnetModel", label: "Sonnet Model" },
+  { key: "opusModel", label: "Opus Model" },
+  { key: "haikuModel", label: "Haiku Model" },
+] as const;
+
 /**
  * Render an editable model details panel with validation, keyboard navigation, and a two-step save/overwrite flow.
  *
@@ -239,7 +251,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 
     if (editMode) {
       // In edit mode, arrow keys navigate between fields
-      const TOTAL_FIELDS = 9; // Name, Description, and the 7 config fields
+      const TOTAL_FIELDS = EDITABLE_FIELDS.length;
 
       if (key.name === "down") {
         setActiveFieldIndex((prev) => (prev + 1) % TOTAL_FIELDS);
@@ -340,8 +352,8 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
               style={{
                 border: true,
                 borderStyle: "rounded",
-                borderColor: "#ef4444",
-                backgroundColor: "#1f1f1f",
+                borderColor: theme.colors.error,
+                backgroundColor: theme.colors.surface,
                 paddingLeft: 1,
                 paddingRight: 1,
                 paddingTop: 1,
@@ -351,7 +363,7 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
             >
               <text
                 attributes={TextAttributes.BOLD}
-                style={{ fg: "#ef4444", marginBottom: 1 }}
+                style={{ fg: theme.colors.error, marginBottom: 1 }}
               >
                 Error
               </text>
