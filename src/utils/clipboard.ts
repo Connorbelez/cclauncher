@@ -2,18 +2,18 @@ interface ClipboardCommand {
 	cmd: string[];
 }
 
-const MAC_WRITE: ClipboardCommand = { cmd: ["pbcopy"] };
-const MAC_READ: ClipboardCommand = { cmd: ["pbpaste"] };
-const WINDOWS_WRITE: ClipboardCommand = {
+export const MAC_WRITE: ClipboardCommand = { cmd: ["pbcopy"] };
+export const MAC_READ: ClipboardCommand = { cmd: ["pbpaste"] };
+export const WINDOWS_WRITE: ClipboardCommand = {
 	cmd: ["powershell", "-NoProfile", "-Command", "Set-Clipboard"],
 };
-const WINDOWS_READ: ClipboardCommand = {
+export const WINDOWS_READ: ClipboardCommand = {
 	cmd: ["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
 };
-const LINUX_WRITE: ClipboardCommand = {
+export const LINUX_WRITE: ClipboardCommand = {
 	cmd: ["xclip", "-selection", "clipboard"],
 };
-const LINUX_READ: ClipboardCommand = {
+export const LINUX_READ: ClipboardCommand = {
 	cmd: ["xclip", "-selection", "clipboard", "-o"],
 };
 

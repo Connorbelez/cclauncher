@@ -70,7 +70,7 @@ Before submitting a Pull Request, please ensure your code passes all checks:
 
 ## For Maintainers: Release Process
 
-Projec releases are automated using [Changesets](https://github.com/changesets/changesets).
+Project releases are automated using [Changesets](https://github.com/changesets/changesets).
 
 ### 1. Create a Changeset
 When you land a PR that should trigger a release or update in the changelog, create a changeset **before merging**:

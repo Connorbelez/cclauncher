@@ -47,9 +47,8 @@ describe("generateWorktreePath", () => {
 		const repoRoot = "/home/user/project/";
 		const path = generateWorktreePath(repoRoot);
 
-		// Note: The function does simple string concatenation, so trailing slash
-		// results in double slash. This documents the current behavior.
-		expect(path).toContain("/home/user/project//.worktrees/");
+		// Now normalized to have a single separator
+		expect(path).toContain("/home/user/project/.worktrees/");
 		expect(path).toContain("claude-");
 	});
 

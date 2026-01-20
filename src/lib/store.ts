@@ -4,8 +4,31 @@ import path from "node:path";
 import { z } from "zod";
 
 // Store location: ~/.claude-model-launcher/models.json
-const STORE_DIR = path.join(os.homedir(), ".claude-model-launcher");
-const STORE_PATH = path.join(STORE_DIR, "models.json");
+const DEFAULT_STORE_DIR = path.join(os.homedir(), ".claude-model-launcher");
+const DEFAULT_STORE_PATH = path.join(DEFAULT_STORE_DIR, "models.json");
+
+let customStorePath: string | null = null;
+
+/**
+ * Get the current store path.
+ */
+export function getStorePath(): string {
+	return customStorePath ?? DEFAULT_STORE_PATH;
+}
+
+/**
+ * Override the store path (primarily for testing).
+ */
+export function setStorePath(newPath: string | null): void {
+	customStorePath = newPath;
+}
+
+/**
+ * Get the current store directory.
+ */
+function getStoreDir(): string {
+	return path.dirname(getStorePath());
+}
 
 // Extended model schema with new fields
 export const modelValueSchema = z.object({
@@ -57,8 +80,9 @@ export function resolveEnvRef(value: string): string {
  */
 function ensureStoreDir(): StoreResult<void> {
 	try {
-		if (!fs.existsSync(STORE_DIR)) {
-			fs.mkdirSync(STORE_DIR, { recursive: true });
+		const storeDir = getStoreDir();
+		if (!fs.existsSync(storeDir)) {
+			fs.mkdirSync(storeDir, { recursive: true });
 		}
 		return { ok: true, data: undefined };
 	} catch (err) {
@@ -132,13 +156,14 @@ export function readModels(): StoreResult<ModelsJson> {
 		return dirResult;
 	}
 
-	if (!fs.existsSync(STORE_PATH)) {
+	const storePath = getStorePath();
+	if (!fs.existsSync(storePath)) {
 		// Return empty object if file doesn't exist yet
 		return { ok: true, data: {} };
 	}
 
 	try {
-		const raw = fs.readFileSync(STORE_PATH, "utf8");
+		const raw = fs.readFileSync(storePath, "utf8");
 		const parsed = JSON.parse(raw);
 		if (!parsed || typeof parsed !== "object") {
 			return {
@@ -197,13 +222,14 @@ export function writeModels(models: ModelsJson): StoreResult<void> {
 		return dirResult;
 	}
 
-	const tempPath = `${STORE_PATH}.tmp`;
+	const storePath = getStorePath();
+	const tempPath = `${storePath}.tmp`;
 
 	try {
 		// Write to temp file first for atomic operation
 		fs.writeFileSync(tempPath, JSON.stringify(models, null, 2));
 		// Rename to actual path (atomic on most filesystems)
-		fs.renameSync(tempPath, STORE_PATH);
+		fs.renameSync(tempPath, storePath);
 		return { ok: true, data: undefined };
 	} catch (err) {
 		// Clean up temp file if it exists
@@ -418,10 +444,8 @@ export function getModelList(): StoreResult<Model[]> {
 
 /**
  * Get the store path (for display/debugging).
+ * Handled by the exported getStorePath() defined above.
  */
-export function getStorePath(): string {
-	return STORE_PATH;
-}
 
 /**
  * Merge models from the provided source into the persistent store, adding any new entries.
