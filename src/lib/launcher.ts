@@ -24,6 +24,38 @@ export interface LaunchOptions {
 }
 
 /**
+ * Sets up signal forwarding for a child process.
+ * Forwards SIGWINCH, SIGTERM, and SIGHUP.
+ *
+ * @param forwardFn - Function to execute when a signal is received
+ * @returns Cleanup function to remove listeners
+ */
+function setupSignalForwarding(
+	forwardFn: (signal: NodeJS.Signals) => void
+): () => void {
+	const signals: NodeJS.Signals[] = ["SIGWINCH", "SIGTERM", "SIGHUP"];
+	const handlers = new Map<NodeJS.Signals, () => void>();
+
+	for (const signal of signals) {
+		const handler = () => {
+			try {
+				forwardFn(signal);
+			} catch {
+				// Ignore errors (e.g. if child is already dead)
+			}
+		};
+		process.on(signal, handler);
+		handlers.set(signal, handler);
+	}
+
+	return () => {
+		for (const [signal, handler] of handlers) {
+			process.off(signal, handler);
+		}
+	};
+}
+
+/**
  * Check if Claude Code is installed and available in PATH.
  */
 export async function checkClaudeInstalled(): Promise<boolean> {
@@ -164,18 +196,13 @@ export async function launchClaudeCode(
 			stderr: Bun.stderr,
 		});
 
-		// Forward SIGWINCH to child process
-		const onSigWinch = () => {
-			try {
-				proc.kill("SIGWINCH");
-			} catch {
-				// Ignore errors if process is already dead
-			}
-		};
-		process.on("SIGWINCH", onSigWinch);
+		const cleanupSignals = setupSignalForwarding((signal) => {
+			// biome-ignore lint/suspicious/noExplicitAny: Bun types require specific signal literals
+			proc.kill(signal as any);
+		});
 
 		const exitCode = await proc.exited;
-		process.off("SIGWINCH", onSigWinch);
+		cleanupSignals();
 
 		return { ok: true, exitCode };
 	} catch (err) {
@@ -232,20 +259,29 @@ function launchWithPty(
 	};
 	process.stdin.on("data", onStdinData);
 
-	// Handle terminal resize - listen to process signal directly
-	const onResize = () => {
+	// Dedicated resize handler for stdout resize events (specific to TTY resize)
+	const onStdoutResize = () => {
 		const newCols = process.stdout.columns || 80;
 		const newRows = process.stdout.rows || 24;
 		try {
 			pty.resize(newCols, newRows);
 		} catch {
-			// Ignore if PTY is gone
+			// Ignore
 		}
 	};
+	process.stdout.on("resize", onStdoutResize);
 
-	// Listen to both SIGWINCH and stdout resize
-	process.on("SIGWINCH", onResize);
-	process.stdout.on("resize", onResize);
+	// General signal forwarding (SIGWINCH, SIGTERM, SIGHUP)
+	const cleanupSignals = setupSignalForwarding((signal) => {
+		if (signal === "SIGWINCH") {
+			// Handle SIGWINCH via resize
+			onStdoutResize();
+		} else {
+			// Kill PTY for other signals
+			// biome-ignore lint/suspicious/noExplicitAny: bun-pty types are loose
+			pty.kill(signal as any);
+		}
+	});
 
 	// Wait for exit
 	return new Promise<LaunchResult>((resolve) => {
@@ -253,8 +289,8 @@ function launchWithPty(
 			// Cleanup
 			dataHandler.dispose();
 			process.stdin.off("data", onStdinData);
-			process.off("SIGWINCH", onResize);
-			process.stdout.off("resize", onResize);
+			process.stdout.off("resize", onStdoutResize);
+			cleanupSignals();
 
 			// Restore stdin mode
 			if (process.stdin.isTTY) {
