@@ -181,10 +181,16 @@ export function ModelSelection({
             selectedBackgroundColor: theme.colors.surfaceHighlight,
           }}
           onChange={(index) => {
-            onSelect(models[index]!);
+            const model = models[index];
+            if (model) {
+              onSelect(model);
+            }
           }}
           onSelect={(index) => {
-            onSelect(models[index]!);
+            const model = models[index];
+            if (model) {
+              onSelect(model);
+            }
           }}
           options={models}
         />

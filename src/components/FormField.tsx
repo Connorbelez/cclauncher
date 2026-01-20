@@ -133,7 +133,11 @@ export function FormField({
         lastKeyRef.current = key.name;
       } else if (key.shift && key.name && key.name.length === 1) {
         // Handle shift+character for uppercase/special chars
-        lastKeyRef.current = key.name.toUpperCase();
+        if (key.sequence && key.sequence.length === 1) {
+          lastKeyRef.current = key.sequence;
+        } else {
+          lastKeyRef.current = key.name;
+        }
       }
 
       // Handle backspace
