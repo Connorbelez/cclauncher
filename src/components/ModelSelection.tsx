@@ -66,7 +66,7 @@ export function ModelSelection(props: ModelSelectionProps) {
 				setConfirmDelete(true);
 			}
 		},
-		[props, worktreeMode, setConfirmDelete, setWorktreeMode]
+		[props, worktreeMode]
 	);
 
 	const handleKeyboard = useCallback(

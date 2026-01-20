@@ -17,6 +17,9 @@
         "useNumericSeparators": "off",
         "useBlockStatements": "off",
         "useFilenamingConvention": "off"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "off"
       }
     }
   },
