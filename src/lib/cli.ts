@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, realpathSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import {
@@ -29,17 +29,34 @@ export type CliCommand =
  * @returns The package version string from package.json, or `"0.0.0"` if unavailable.
  */
 function getPackageVersion(): string {
-  try {
-    const entryPath = process.argv[1];
-    const packagePath = entryPath
-      ? path.resolve(path.dirname(entryPath), "..", "package.json")
-      : fileURLToPath(new URL("../../package.json", import.meta.url));
-    const raw = readFileSync(packagePath, "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
+  const candidates: string[] = [];
+
+  if (process.argv[1]) {
+    try {
+      const entryPath = realpathSync(process.argv[1]);
+      candidates.push(path.resolve(path.dirname(entryPath), "..", "package.json"));
+    } catch {
+      candidates.push(
+        path.resolve(path.dirname(process.argv[1]), "..", "package.json")
+      );
+    }
   }
+
+  candidates.push(fileURLToPath(new URL("../../package.json", import.meta.url)));
+
+  for (const packagePath of candidates) {
+    try {
+      const raw = readFileSync(packagePath, "utf8");
+      const parsed = JSON.parse(raw) as { version?: string };
+      if (parsed.version) {
+        return parsed.version;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return "0.0.0";
 }
 
 const VERSION = getPackageVersion();
