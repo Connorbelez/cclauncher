@@ -2,6 +2,19 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import path from "path";
 import os from "os";
+
+const tempHomeDir = vi.hoisted(() =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "cclauncher-test-"))
+);
+
+vi.mock("os", async (importOriginal) => {
+  const actual = await importOriginal<typeof os>();
+  return {
+    ...actual,
+    homedir: () => tempHomeDir,
+  };
+});
+
 import {
   resolveEnvRef,
   modelSchema,

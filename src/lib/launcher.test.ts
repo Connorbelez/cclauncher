@@ -25,6 +25,9 @@ describe("prepareEnvironment", () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    delete process.env.ANTHROPIC_DEFAULT_SONNET_MODEL;
+    delete process.env.ANTHROPIC_DEFAULT_OPUS_MODEL;
+    delete process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL;
   });
 
   afterEach(() => {

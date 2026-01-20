@@ -86,6 +86,9 @@ export function FocusProvider({
       return;
     }
     if (key.name === "tab") {
+      if (registry.length === 0) {
+        return;
+      }
       const index = registry.indexOf(focusedId || "");
       const nextIndex = key.shift
         ? (index - 1 + registry.length) % registry.length
