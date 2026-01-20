@@ -10,6 +10,21 @@ dist
 coverage
 *.lcov
 
+# agent
+.agent/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.github/
+.kilocode/
+.opencode/
+.shared/
+openspec/
+PRD.md 
+WARP.md
+
+
 # logs
 logs
 *.log

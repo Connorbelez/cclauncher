@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/biome/core", "ultracite/biome/react"],
+  "files": {
+    "ignoreUnknown": true,
+    "includes": ["src", "!.worktrees"]
+  },
+  "javascript": {
+    "globals": ["Bun", "process"]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "style": {
+        "noMagicNumbers": "off",
+        "noNestedTernary": "off",
+        "useNumericSeparators": "off",
+        "useBlockStatements": "off",
+        "useFilenamingConvention": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "attributePosition": "auto",
+    "indentStyle": "tab",
+    "indentWidth": 2,
+    "lineWidth": 80,
+    "lineEnding": "lf"
+  }
+}
