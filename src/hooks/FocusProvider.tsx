@@ -1,223 +1,165 @@
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useMemo,
-  useEffect,
-} from "react";
 import { useKeyboard } from "@opentui/react";
+import type React from "react";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
+
+interface Key {
+	name?: string;
+	shift?: boolean;
+	ctrl?: boolean;
+	meta?: boolean;
+}
 
 interface FocusContextType {
-  focusedId: string | undefined;
-  register: (id: string) => void;
-  unregister: (id: string) => void;
-  focusId: (id: string) => void;
-  editMode: boolean;
-  setEditMode: (editMode: boolean) => void;
-  setFocusedId: (id: string) => void;
-  isModalOpen: boolean;
-  setModalOpen: (isOpen: boolean) => void;
-  setExitGuard: (
-    id: string,
-    guard: (key: {
-      name: string;
-      shift?: boolean;
-      ctrl?: boolean;
-      meta?: boolean;
-    }) => boolean
-  ) => void;
-  clearExitGuard: (id: string) => void;
+	focusedId: string | undefined;
+	register: (id: string) => void;
+	unregister: (id: string) => void;
+	focusId: (id: string) => void;
+	editMode: boolean;
+	setEditMode: (editMode: boolean) => void;
+	setFocusedId: (id: string) => void;
+	isModalOpen: boolean;
+	setModalOpen: (isOpen: boolean) => void;
+	setExitGuard: (id: string, guard: (key: Key) => boolean) => void;
+	clearExitGuard: (id: string) => void;
 }
 
 const FocusContext = createContext<FocusContextType | undefined>(undefined);
 
-/**
- * Supplies focus management, keyboard navigation, edit-mode and modal state, and per-item exit guards to descendant components via FocusContext.
- *
- * The provider tracks a registry of focusable IDs, manages the currently focused ID and edit mode, allows components to register/unregister themselves, and exposes APIs to set/clear exit guards that can intercept keyboard-driven focus changes.
- *
- * @param children - React nodes that will receive the focus context
- * @param order - Initial focus order; the first item (if any) is used as the initial focused ID
- * @returns A React element rendering the FocusContext provider wired with focus management state and APIs
- */
 export function FocusProvider({
-  children,
-  order,
+	children,
+	order,
 }: {
-  children: React.ReactNode;
-  order: string[];
+	children: React.ReactNode;
+	order: string[];
 }) {
-  const [registry, setRegistry] = useState<string[]>([]);
-  const [focusedId, setFocusedId] = useState<string | undefined>(
-    order[0] || undefined
-  );
-  const [editMode, setEditMode] = useState(false);
-  const [isModalOpen, setModalOpen] = useState(false);
-  const exitGuards = useMemo(
-    () =>
-      new Map<
-        string,
-        (key: {
-          name: string;
-          shift?: boolean;
-          ctrl?: boolean;
-          meta?: boolean;
-        }) => boolean
-      >(),
-    []
-  );
+	const [registry, setRegistry] = useState<string[]>([]);
+	const [focusedId, setFocusedId] = useState<string | undefined>(
+		order[0] || undefined
+	);
+	const [editMode, setEditMode] = useState(false);
+	const [isModalOpen, setModalOpen] = useState(false);
+	const exitGuards = useMemo(
+		() => new Map<string, (key: Key) => boolean>(),
+		[]
+	);
 
-  const register = useCallback((id: string) => {
-    setRegistry((prev) => [...prev, id]); // Add to the focusable list
-    setFocusedId((curr) => curr ?? id); // Focus the first thing that registers
-  }, []);
+	const register = useCallback((id: string) => {
+		setRegistry((prev) => [...prev, id]);
+		setFocusedId((curr) => curr ?? id);
+	}, []);
 
-  const unregister = useCallback((id: string) => {
-    setRegistry((prev) => prev.filter((item) => item !== id)); // Remove from list
-  }, []);
-  // Global Tab navigation handler
-  useKeyboard((key) => {
-    const guard = focusedId ? exitGuards.get(focusedId) : undefined;
-    if (guard && guard(key)) {
-      return;
-    }
-    if (isModalOpen) {
-      return;
-    }
-    if (key.name === "tab") {
-      const index = registry.indexOf(focusedId || "");
-      const nextIndex = key.shift
-        ? (index - 1 + registry.length) % registry.length
-        : (index + 1) % registry.length;
-      setEditMode(!editMode);
-      setFocusedId(registry[nextIndex]);
-    }
+	const unregister = useCallback((id: string) => {
+		setRegistry((prev) => prev.filter((item) => item !== id));
+	}, []);
 
-    if (key.name === "e" && focusedId === "model_selection") {
-      console.log("Entering edit mode");
-      setFocusedId("model_details");
-      setEditMode(!editMode);
-    }
+	const handleTab = useCallback(
+		(shift: boolean) => {
+			const index = registry.indexOf(focusedId || "");
+			const nextIndex = shift
+				? (index - 1 + registry.length) % registry.length
+				: (index + 1) % registry.length;
+			setEditMode(!editMode);
+			setFocusedId(registry[nextIndex]);
+		},
+		[registry, focusedId, editMode]
+	);
 
-    if (key.name === "escape" && editMode) {
-      console.log("Exiting edit mode");
-      setEditMode(false);
-      setFocusedId("model_selection");
-    }
+	const handleKeyRegistry = useCallback(
+		(name: string) => {
+			if (focusedId === "model_selection") {
+				if (name === "e" || name === "right") {
+					setFocusedId("model_details");
+					if (name === "e") setEditMode(!editMode);
+				} else if (name === "n") {
+					setFocusedId("new_model");
+				} else if (name === "g") {
+					setFocusedId("worktree_selection");
+				}
+			} else if (focusedId === "model_details" && name === "left") {
+				setFocusedId("model_selection");
+			}
+		},
+		[focusedId, editMode]
+	);
 
-    if (focusedId === "model_selection" && key.name === "n") {
-      console.log("Creating new model");
-      setFocusedId("new_model");
-    }
+	const handleGlobalKeys = useCallback(
+		(key: { name?: string; shift?: boolean }) => {
+			const guard = focusedId ? exitGuards.get(focusedId) : undefined;
+			if (guard?.(key) || isModalOpen) return;
 
-    if (key.name === "right" && focusedId === "model_selection") {
-      setFocusedId("model_details");
-    }
+			const name = key.name || "";
+			if (name === "tab") {
+				handleTab(Boolean(key.shift));
+			} else if (name === "escape" && editMode) {
+				setEditMode(false);
+				setFocusedId("model_selection");
+			} else {
+				handleKeyRegistry(name);
+			}
+		},
+		[focusedId, isModalOpen, editMode, handleTab, handleKeyRegistry, exitGuards]
+	);
 
-    if (key.name === "left" && focusedId === "model_details") {
-      setFocusedId("model_selection");
-    }
+	useKeyboard(handleGlobalKeys);
 
-    // 'g' to toggle git worktree selector
-    if (key.name === "g" && focusedId === "model_selection") {
-      setFocusedId("worktree_selection");
-    }
-  });
+	const contextValue = useMemo(
+		() => ({
+			focusedId,
+			register,
+			unregister,
+			focusId: (id: string) => setFocusedId(id),
+			editMode,
+			setEditMode,
+			setFocusedId,
+			isModalOpen,
+			setModalOpen,
+			setExitGuard: (id: string, guard: (key: Key) => boolean) =>
+				exitGuards.set(id, guard),
+			clearExitGuard: (id: string) => exitGuards.delete(id),
+		}),
+		[focusedId, register, unregister, editMode, isModalOpen, exitGuards]
+	);
 
-  const setExitGuard = useCallback(
-    (
-      id: string,
-      guard: (key: {
-        name: string;
-        shift?: boolean;
-        ctrl?: boolean;
-        meta?: boolean;
-      }) => boolean
-    ) => {
-      exitGuards.set(id, guard);
-    },
-    [exitGuards]
-  );
-
-  const clearExitGuard = useCallback(
-    (id: string) => {
-      exitGuards.delete(id);
-    },
-    [exitGuards]
-  );
-
-  const value = useMemo(
-    () => ({
-      focusedId,
-      register,
-      unregister,
-      focusId: (id: string) => setFocusedId(id),
-      editMode,
-      setEditMode,
-      setFocusedId,
-      isModalOpen,
-      setModalOpen,
-      setExitGuard,
-      clearExitGuard,
-    }),
-    [
-      focusedId,
-      register,
-      unregister,
-      editMode,
-      setFocusedId,
-      isModalOpen,
-      setModalOpen,
-      setExitGuard,
-      clearExitGuard,
-    ]
-  );
-
-  return (
-    <FocusContext.Provider value={value}>{children}</FocusContext.Provider>
-  );
+	return (
+		<FocusContext.Provider value={contextValue}>
+			{children}
+		</FocusContext.Provider>
+	);
 }
 
 export const useFocusContext = () => {
-  const context = useContext(FocusContext);
-  if (!context)
-    throw new Error("useFocusContext must be used within FocusProvider");
-  return context;
+	const context = useContext(FocusContext);
+	if (!context) {
+		throw new Error("useFocusContext must be used within FocusProvider");
+	}
+	return context;
 };
 
 export const useFocusState = (id: string) => {
-  const context = useContext(FocusContext);
-  if (!context)
-    throw new Error("useFocusState must be used within FocusProvider");
-  const {
-    register,
-    unregister,
-    focusedId,
-    editMode,
-    setEditMode,
-    setFocusedId,
-    isModalOpen,
-    setModalOpen,
-    setExitGuard,
-    clearExitGuard,
-  } = context;
+	const context = useFocusContext();
 
-  useEffect(() => {
-    register(id); // I am here! Add me to the Tab order.
-    return () => unregister(id); // I am gone! Remove me from the Tab order.
-  }, [id, register, unregister]);
+	useEffect(() => {
+		context.register(id);
+		return () => context.unregister(id);
+	}, [id, context.register, context.unregister]);
 
-  return {
-    isFocused: focusedId === id,
-    focus: () => context.focusId(id),
-    editMode,
-    setEditMode,
-    setFocusedId,
-    focusedId,
-    isModalOpen,
-    setModalOpen,
-    setExitGuard,
-    clearExitGuard,
-  };
+	return {
+		isFocused: context.focusedId === id,
+		focus: () => context.focusId(id),
+		editMode: context.editMode,
+		setEditMode: context.setEditMode,
+		setFocusedId: context.setFocusedId,
+		focusedId: context.focusedId,
+		isModalOpen: context.isModalOpen,
+		setModalOpen: context.setModalOpen,
+		setExitGuard: context.setExitGuard,
+		clearExitGuard: context.clearExitGuard,
+	};
 };
