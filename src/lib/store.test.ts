@@ -17,6 +17,7 @@ import {
 	resolveEnvRef,
 	saveModel,
 	setDefaultModel,
+	setStorePath,
 	writeModels,
 } from "./store";
 
@@ -191,34 +192,25 @@ describe("modelSchema", () => {
 });
 
 describe("Store operations", () => {
-	const STORE_DIR = path.join(os.homedir(), ".claude-model-launcher");
-	const STORE_PATH = path.join(STORE_DIR, "models.json");
-	let originalContent: string | null = null;
+	let testDir: string;
 
 	beforeEach(() => {
-		// Backup existing file if present
-		try {
-			originalContent = fs.readFileSync(STORE_PATH, "utf8");
-		} catch {
-			originalContent = null;
-		}
-		// Clear the store for tests
-		try {
-			fs.unlinkSync(STORE_PATH);
-		} catch {
-			// File may not exist
-		}
+		// Create a temporary directory for the store
+		testDir = fs.mkdtempSync(path.join(os.tmpdir(), "cclauncher-test-"));
+		const testStorePath = path.join(testDir, "models.json");
+		setStorePath(testStorePath);
 	});
 
 	afterEach(() => {
-		// Restore original content
+		// Reset the store path
+		setStorePath(null);
+		// Clean up the temporary directory
 		try {
-			fs.unlinkSync(STORE_PATH);
-		} catch {
-			// Ignore
-		}
-		if (originalContent !== null) {
-			fs.writeFileSync(STORE_PATH, originalContent);
+			if (fs.existsSync(testDir)) {
+				fs.rmSync(testDir, { recursive: true, force: true });
+			}
+		} catch (err) {
+			console.error("Failed to cleanup test dir:", err);
 		}
 	});
 
@@ -235,8 +227,10 @@ describe("Store operations", () => {
 			const models: ModelsJson = {
 				"test-model": createTestModel(),
 			};
-			fs.mkdirSync(STORE_DIR, { recursive: true });
-			fs.writeFileSync(STORE_PATH, JSON.stringify(models, null, 2));
+			const storePath = getStorePath();
+			const storeDir = path.dirname(storePath);
+			fs.mkdirSync(storeDir, { recursive: true });
+			fs.writeFileSync(storePath, JSON.stringify(models, null, 2));
 
 			const result = readModels();
 			expect(result.ok).toBe(true);
@@ -247,8 +241,10 @@ describe("Store operations", () => {
 		});
 
 		it("should return error for invalid JSON", () => {
-			fs.mkdirSync(STORE_DIR, { recursive: true });
-			fs.writeFileSync(STORE_PATH, "invalid json {{{");
+			const storePath = getStorePath();
+			const storeDir = path.dirname(storePath);
+			fs.mkdirSync(storeDir, { recursive: true });
+			fs.writeFileSync(storePath, "invalid json {{{");
 
 			const result = readModels();
 			expect(result.ok).toBe(false);
@@ -258,8 +254,10 @@ describe("Store operations", () => {
 		});
 
 		it("should return error if file is not an object", () => {
-			fs.mkdirSync(STORE_DIR, { recursive: true });
-			fs.writeFileSync(STORE_PATH, '"just a string"');
+			const storePath = getStorePath();
+			const storeDir = path.dirname(storePath);
+			fs.mkdirSync(storeDir, { recursive: true });
+			fs.writeFileSync(storePath, '"just a string"');
 
 			const result = readModels();
 			expect(result.ok).toBe(false);
@@ -278,7 +276,7 @@ describe("Store operations", () => {
 			const result = writeModels(models);
 			expect(result.ok).toBe(true);
 
-			const content = fs.readFileSync(STORE_PATH, "utf8");
+			const content = fs.readFileSync(getStorePath(), "utf8");
 			const parsed = JSON.parse(content);
 			expect(parsed["test-model"]).toBeDefined();
 		});
@@ -286,7 +284,7 @@ describe("Store operations", () => {
 		it("should create store directory if it does not exist", () => {
 			// Remove directory if exists
 			try {
-				fs.rmSync(STORE_DIR, { recursive: true });
+				fs.rmSync(testDir, { recursive: true, force: true });
 			} catch {
 				// Ignore
 			}
@@ -297,7 +295,7 @@ describe("Store operations", () => {
 
 			const result = writeModels(models);
 			expect(result.ok).toBe(true);
-			expect(fs.existsSync(STORE_DIR)).toBe(true);
+			expect(fs.existsSync(testDir)).toBe(true);
 		});
 	});
 
@@ -546,7 +544,7 @@ describe("Store operations", () => {
 	describe("getStorePath", () => {
 		it("should return the store path", () => {
 			const storePath = getStorePath();
-			expect(storePath).toContain(".claude-model-launcher");
+			expect(storePath).toContain(testDir);
 			expect(storePath).toContain("models.json");
 		});
 	});

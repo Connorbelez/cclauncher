@@ -72,7 +72,13 @@ function truncatePath(path: string, maxLen: number): string {
 	if (path.length <= maxLen) {
 		return path;
 	}
-	return `...${path.slice(-(maxLen - 3))}`;
+	if (maxLen <= 3) {
+		return ".".repeat(Math.max(0, maxLen));
+	}
+	const visibleChars = maxLen - 3;
+	// Guard against non-positive visibleChars to ensure a strictly negative index for slice,
+	// which prevents slice(-0) from returning the entire string.
+	return `...${path.slice(-Math.max(1, visibleChars))}`;
 }
 
 /**

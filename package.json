@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "release": "bun run build && changeset publish"
   },
   "files": [
     "dist",
@@ -51,6 +52,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
+    "@changesets/cli": "^2.29.8",
     "@types/bun": "latest",
     "@vitest/coverage-v8": "^4.0.17",
     "ultracite": "^7.0.11",

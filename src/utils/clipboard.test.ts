@@ -1,4 +1,12 @@
 import { describe, expect, it } from "vitest";
+import {
+	LINUX_READ,
+	LINUX_WRITE,
+	MAC_READ,
+	MAC_WRITE,
+	WINDOWS_READ,
+	WINDOWS_WRITE,
+} from "./clipboard";
 
 // Since clipboard operations depend on system commands (pbcopy, xclip, etc.),
 // we test the platform detection logic and command construction.
@@ -7,44 +15,25 @@ import { describe, expect, it } from "vitest";
 describe("Clipboard utility", () => {
 	describe("Platform commands", () => {
 		it("should define macOS commands correctly", () => {
-			const macWriteCmd = ["pbcopy"];
-			const macReadCmd = ["pbpaste"];
-
-			expect(macWriteCmd).toEqual(["pbcopy"]);
-			expect(macReadCmd).toEqual(["pbpaste"]);
+			expect(MAC_WRITE.cmd).toEqual(["pbcopy"]);
+			expect(MAC_READ.cmd).toEqual(["pbpaste"]);
 		});
 
 		it("should define Windows commands correctly", () => {
-			const winWriteCmd = [
-				"powershell",
-				"-NoProfile",
-				"-Command",
-				"Set-Clipboard",
-			];
-			const winReadCmd = [
-				"powershell",
-				"-NoProfile",
-				"-Command",
-				"Get-Clipboard",
-			];
+			expect(WINDOWS_WRITE.cmd[0]).toBe("powershell");
+			expect(WINDOWS_WRITE.cmd).toContain("-NoProfile");
+			expect(WINDOWS_WRITE.cmd).toContain("Set-Clipboard");
 
-			expect(winWriteCmd[0]).toBe("powershell");
-			expect(winWriteCmd).toContain("-NoProfile");
-			expect(winWriteCmd).toContain("Set-Clipboard");
-
-			expect(winReadCmd[0]).toBe("powershell");
-			expect(winReadCmd).toContain("Get-Clipboard");
+			expect(WINDOWS_READ.cmd[0]).toBe("powershell");
+			expect(WINDOWS_READ.cmd).toContain("Get-Clipboard");
 		});
 
 		it("should define Linux commands correctly", () => {
-			const linuxWriteCmd = ["xclip", "-selection", "clipboard"];
-			const linuxReadCmd = ["xclip", "-selection", "clipboard", "-o"];
+			expect(LINUX_WRITE.cmd[0]).toBe("xclip");
+			expect(LINUX_WRITE.cmd).toContain("-selection");
+			expect(LINUX_WRITE.cmd).toContain("clipboard");
 
-			expect(linuxWriteCmd[0]).toBe("xclip");
-			expect(linuxWriteCmd).toContain("-selection");
-			expect(linuxWriteCmd).toContain("clipboard");
-
-			expect(linuxReadCmd).toContain("-o");
+			expect(LINUX_READ.cmd).toContain("-o");
 		});
 	});
 
@@ -136,18 +125,18 @@ describe("Clipboard utility", () => {
 	});
 });
 
-// Integration test placeholder (requires actual clipboard access)
-describe("Clipboard integration", () => {
-	it("should write and read text from clipboard", async () => {
-		// This test would require actual clipboard access
-		// Skipped in CI environments
+// Integration test (requires actual clipboard access)
+// We only run this in non-CI environments to avoid failures in headless shells
+if (!process.env.CI) {
+	describe("Clipboard integration", () => {
+		it("should write and read text from clipboard", async () => {
+			const { writeClipboard, readClipboard } = await import("./clipboard");
 
-		const { writeClipboard, readClipboard } = await import("./clipboard");
+			const testText = `Hello from test ${Date.now()}`;
+			await writeClipboard(testText);
 
-		const testText = `Hello from test ${Date.now()}`;
-		await writeClipboard(testText);
-
-		const result = await readClipboard();
-		expect(result).toBe(testText);
+			const result = await readClipboard();
+			expect(result).toBe(testText);
+		});
 	});
-});
+}

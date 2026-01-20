@@ -43,6 +43,7 @@ function getPackageVersion(): string {
 }
 
 const VERSION = getPackageVersion();
+const NUMERIC_VALUE_RE = /^-?\d+(\.\d+)?$/;
 
 const HELP_TEXT = `
 CCLauncher - Launch Claude Code with custom model configurations
@@ -107,7 +108,11 @@ function handleLongFlag(
 		return 0;
 	}
 
-	if (nextArg && !nextArg.startsWith("--")) {
+	// A value is legitimate if it doesn't start with a dash,
+	// or if it's a negative number (e.g., -1.5).
+	const isValue =
+		nextArg && (!nextArg.startsWith("-") || NUMERIC_VALUE_RE.test(nextArg));
+	if (isValue) {
 		flags.set(key, nextArg);
 		return 1;
 	}
