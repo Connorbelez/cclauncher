@@ -101,10 +101,11 @@ export type WorktreeResult =
   | { ok: false; message: string };
 
 /**
- * Create a detached worktree at the specified path.
- * @param repoRoot The root of the git repository
- * @param worktreePath The path where the worktree should be created
- * @returns Result with the worktree path or an error message
+ * Creates a detached Git worktree at the given path under the specified repository root.
+ *
+ * @param repoRoot - The repository root directory used as the Git working directory.
+ * @param worktreePath - The filesystem path where the new detached worktree will be created.
+ * @returns `{ ok: true; path: string }` when the worktree was created, `{ ok: false; message: string }` on failure.
  */
 export async function createDetachedWorktree(
   repoRoot: string,
@@ -185,9 +186,10 @@ export type ListWorktreesResult =
   | { ok: false; message: string };
 
 /**
- * List all worktrees in the repository.
- * @param repoRoot The root of the git repository
- * @returns List of worktree information or an error
+ * Lists all Git worktrees for the given repository and includes uncommitted diff stats for each.
+ *
+ * @param repoRoot - Absolute path to the repository root to list worktrees from
+ * @returns An object with `{ ok: true; worktrees }` where `worktrees` is an array of `WorktreeInfo` on success; otherwise `{ ok: false; message }` with an error message
  */
 export async function listWorktrees(
   repoRoot: string

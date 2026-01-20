@@ -26,8 +26,12 @@ function formatDiffStats(stats: WorktreeInfo["diffStats"]): string {
 }
 
 /**
- * Format a worktree for display in the select list.
- * Creates a visually appealing entry with markers and branch info.
+ * Constructs a select-list option that represents a worktree entry.
+ *
+ * The option's `name` contains a branch marker and branch label with diff stats aligned to the right; the `description` shows a truncated or special-path label and the short commit head, and `value` is the original worktree object.
+ *
+ * @param worktree - The worktree to format into a select option
+ * @returns The SelectOption object to render in the worktree list
  */
 function formatWorktreeOption(worktree: WorktreeInfo): SelectOption {
   const marker = worktree.isMain ? "★" : " ";
@@ -65,6 +69,18 @@ function truncatePath(path: string, maxLen: number): string {
   return "..." + path.slice(-(maxLen - 3));
 }
 
+/**
+ * Render a selectable list of Git worktrees with keyboard shortcuts for launching, creating, refreshing, and navigating back.
+ *
+ * @param worktrees - Array of available worktrees to display.
+ * @param selectedWorktree - Currently selected worktree (used to set the initial selection).
+ * @param onSelect - Callback invoked when the user selects a worktree from the list.
+ * @param onLaunch - Callback invoked to launch the currently selected worktree.
+ * @param onCreateNew - Callback invoked to create a new worktree.
+ * @param onRefresh - Callback invoked to refresh the worktree list.
+ * @param selectedModelName - Human-readable model name shown in the selector title.
+ * @returns The rendered worktree selector UI, or `null` when the component is not focused for worktree selection.
+ */
 export function GitWorktreeSelector({
   worktrees,
   selectedWorktree,

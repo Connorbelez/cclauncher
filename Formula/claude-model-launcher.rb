@@ -7,6 +7,8 @@ class ClaudeModelLauncher < Formula
 
   depends_on "oven-sh/bun/bun"
 
+  ##
+  # Installs all package files into `libexec` and creates a `bin/claude-launch` symlink pointing to `libexec/dist/cli.js`.
   def install
     libexec.install Dir["*"]
     bin.install_symlink libexec/"dist/cli.js" => "claude-launch"
