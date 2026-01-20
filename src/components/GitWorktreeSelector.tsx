@@ -17,6 +17,15 @@ export type GitWorktreeSelectorProps = {
 };
 
 /**
+ * Format diff stats for display (e.g., "+5/-10" or "✓" for clean).
+ */
+function formatDiffStats(stats: WorktreeInfo["diffStats"]): string {
+  if (!stats) return "";
+  if (stats.additions === 0 && stats.deletions === 0) return "✓";
+  return `+${stats.additions}/-${stats.deletions}`;
+}
+
+/**
  * Format a worktree for display in the select list.
  * Creates a visually appealing entry with markers and branch info.
  */
@@ -27,8 +36,19 @@ function formatWorktreeOption(worktree: WorktreeInfo): SelectOption {
     ? "(main worktree)"
     : truncatePath(worktree.relativePath, 25);
 
+  // Build name with diff stats right-aligned
+  const leftPart = `${marker} ${branchDisplay}`;
+  const statsDisplay = formatDiffStats(worktree.diffStats);
+
+  // Pad to create right-aligned stats (assuming ~50 char width)
+  const totalWidth = 45;
+  const paddingNeeded = Math.max(1, totalWidth - leftPart.length - statsDisplay.length);
+  const name = statsDisplay
+    ? `${leftPart}${" ".repeat(paddingNeeded)}${statsDisplay}`
+    : leftPart;
+
   return {
-    name: `${marker} ${branchDisplay}`,
+    name,
     description: `${pathDisplay}  ${worktree.headShort}`,
     value: worktree,
   };

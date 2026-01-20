@@ -3,6 +3,16 @@
  */
 
 /**
+ * Statistics about uncommitted changes in a worktree.
+ */
+export interface DiffStats {
+  /** Number of lines added */
+  additions: number;
+  /** Number of lines deleted */
+  deletions: number;
+}
+
+/**
  * Detect if the current directory is inside a git repository.
  * @returns The absolute path to the repo root, or null if not in a git repo.
  */
@@ -38,6 +48,49 @@ export async function getCurrentCommit(): Promise<string | null> {
     }
     const output = await new Response(proc.stdout).text();
     return output.trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get diff statistics for uncommitted changes in a worktree.
+ * @param worktreePath The absolute path to the worktree
+ * @returns DiffStats or null if error/no changes
+ */
+export async function getWorktreeDiffStats(
+  worktreePath: string
+): Promise<DiffStats | null> {
+  try {
+    const proc = Bun.spawn(["git", "diff", "--numstat", "HEAD"], {
+      cwd: worktreePath,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      return null;
+    }
+
+    const output = await new Response(proc.stdout).text();
+    const lines = output.trim().split("\n").filter(Boolean);
+
+    if (lines.length === 0) {
+      return { additions: 0, deletions: 0 };
+    }
+
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of lines) {
+      // Format: "added\tdeleted\tfilename"
+      // Binary files show "-" for both counts
+      const [added, deleted] = line.split("\t");
+      if (added !== "-") additions += parseInt(added, 10) || 0;
+      if (deleted !== "-") deletions += parseInt(deleted, 10) || 0;
+    }
+
+    return { additions, deletions };
   } catch {
     return null;
   }
@@ -123,6 +176,8 @@ export interface WorktreeInfo {
   isMain: boolean;
   /** Path relative to repo root for display purposes */
   relativePath: string;
+  /** Uncommitted change statistics (null if unavailable) */
+  diffStats?: DiffStats | null;
 }
 
 export type ListWorktreesResult =
@@ -153,6 +208,15 @@ export async function listWorktrees(repoRoot: string): Promise<ListWorktreesResu
 
     const output = await new Response(proc.stdout).text();
     const worktrees = parseWorktreeOutput(output, repoRoot);
+
+    // Fetch diff stats for all worktrees in parallel
+    const statsPromises = worktrees.map((wt) => getWorktreeDiffStats(wt.path));
+    const allStats = await Promise.all(statsPromises);
+
+    // Attach stats to each worktree
+    for (let i = 0; i < worktrees.length; i++) {
+      worktrees[i].diffStats = allStats[i];
+    }
 
     return { ok: true, worktrees };
   } catch (err) {
