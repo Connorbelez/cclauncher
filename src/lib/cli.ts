@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   getModel,
   getModelList,
@@ -18,7 +21,21 @@ export type CliCommand =
   | { type: "add"; model: Partial<Model> }
   | { type: "error"; message: string };
 
-const VERSION = "1.0.0";
+function getPackageVersion(): string {
+  try {
+    const entryPath = process.argv[1];
+    const packagePath = entryPath
+      ? path.resolve(path.dirname(entryPath), "..", "package.json")
+      : fileURLToPath(new URL("../../package.json", import.meta.url));
+    const raw = readFileSync(packagePath, "utf8");
+    const parsed = JSON.parse(raw) as { version?: string };
+    return parsed.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const VERSION = getPackageVersion();
 
 const HELP_TEXT = `
 CCLauncher - Launch Claude Code with custom model configurations
@@ -54,7 +71,7 @@ EXAMPLES:
 CONFIG:
   Models are stored at: ${getStorePath()}
 
-For more information, visit: https://github.com/your/cclauncher
+For more information, visit: https://github.com/connor/cclauncher
 `.trim();
 
 /**

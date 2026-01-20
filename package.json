@@ -2,15 +2,47 @@
   "name": "claude-model-launcher",
   "version": "1.0.0",
   "description": "Launch Claude Code with custom model configurations",
-  "module": "src/index.tsx",
+  "module": "dist/cli.js",
   "type": "module",
   "bin": {
-    "claude-launch": "src/index.tsx"
+    "claude-launch": "dist/cli.js"
   },
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
-    "start": "bun run src/index.tsx"
+    "start": "bun run src/index.tsx",
+    "build": "bun build src/index.tsx --target=bun --outdir=dist --entry-naming=cli.js && echo '#!/usr/bin/env bun' | cat - dist/cli.js > dist/cli.tmp && mv dist/cli.tmp dist/cli.js && chmod +x dist/cli.js",
+    "prepublishOnly": "bun run build"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./dist/cli.js"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "author": "Connor Beleznay",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Connorbelez/cclauncher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Connorbelez/cclauncher/issues"
+  },
+  "homepage": "https://github.com/Connorbelez/cclauncher#readme",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "ai",
+    "model-launcher",
+    "tui",
+    "cli"
+  ],
+  "license": "Apache-2.0",
   "devDependencies": {
     "@types/bun": "latest"
   },

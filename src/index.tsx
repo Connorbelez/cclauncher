@@ -337,16 +337,10 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
   // Launch Claude Code with selected model
   const handleLaunch = useCallback(
     async (model: SelectOption, options?: { useWorktree?: boolean }) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:entry',message:'handleLaunch entry',data:{modelName:model.name,useWorktree:options?.useWorktree},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       setLaunching(true);
 
       // Exit TUI before spawning Claude Code
       renderer.destroy();
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/index.tsx:handleLaunch:afterDestroy',message:'renderer.destroy called',data:{destroyCalled:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
 
       // Reset terminal input state so Claude Code inherits a clean TTY
       resetTerminalForChild();

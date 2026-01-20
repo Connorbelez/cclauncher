@@ -91,16 +91,10 @@ export function prepareEnvironment(model: Model): Record<string, string> {
  */
 export async function launchClaudeCode(model: Model, options?: LaunchOptions): Promise<LaunchResult> {
   const cwd = options?.cwd ?? process.cwd();
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:entry',message:'launchClaudeCode entry',data:{modelName:model.name,bunPtyAvailable:!!bunPtySpawn,cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-  // #endregion
   resetTerminalForChild();
 
   // Verify Claude is installed
   const isInstalled = await checkClaudeInstalled();
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:checkInstalled',message:'checkClaudeInstalled result',data:{isInstalled},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-  // #endregion
   if (!isInstalled) {
     return {
       ok: false,
@@ -121,17 +115,11 @@ export async function launchClaudeCode(model: Model, options?: LaunchOptions): P
     try {
       return await launchWithPty(env, cwd);
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:ptyFailed',message:'bun-pty spawn failed, falling back',data:{error:err instanceof Error ? err.message : String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-      // #endregion
       // Fall through to Bun.spawn fallback
     }
   }
 
   // Fallback: Bun.spawn with inherited stdio
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchClaudeCode:fallback',message:'Using Bun.spawn fallback',data:{cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-  // #endregion
   try {
     const proc = Bun.spawn(["claude"], {
       env,
@@ -165,10 +153,6 @@ async function launchWithPty(env: Record<string, string>, cwd: string): Promise<
   const cols = process.stdout.columns || 80;
   const rows = process.stdout.rows || 24;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawn',message:'Spawning with bun-pty',data:{cols,rows,cwd},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-  // #endregion
-
   const pty = bunPtySpawn("claude", [], {
     name: "xterm-256color",
     cols,
@@ -176,10 +160,6 @@ async function launchWithPty(env: Record<string, string>, cwd: string): Promise<
     cwd,
     env,
   });
-
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:spawned',message:'PTY spawned',data:{pid:pty.pid},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-  // #endregion
 
   // Put stdin in raw mode for direct input passthrough
   if (process.stdin.isTTY) {
@@ -209,10 +189,6 @@ async function launchWithPty(env: Record<string, string>, cwd: string): Promise<
   // Wait for exit
   return new Promise<LaunchResult>((resolve) => {
     pty.onExit(({ exitCode, signal }) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/launcher.ts:launchWithPty:exit',message:'PTY exited',data:{exitCode,signal},timestamp:Date.now(),sessionId:'debug-session',runId:'pty-fix',hypothesisId:'PTY'})}).catch(()=>{});
-      // #endregion
-
       // Cleanup
       dataHandler.dispose();
       process.stdin.off("data", onStdinData);

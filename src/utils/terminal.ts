@@ -17,9 +17,6 @@ export function resetKeyboardMode(): void {
  * Disables raw mode and common input protocols that can "stack" across apps.
  */
 export function resetTerminalForChild(): void {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/terminal.ts:resetTerminalForChild:entry',message:'resetTerminalForChild entry',data:{stdinIsTTY:process.stdin.isTTY,stdoutIsTTY:process.stdout.isTTY},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
   if (process.stdin.isTTY) {
     try {
       process.stdin.setRawMode(false);
@@ -34,9 +31,6 @@ export function resetTerminalForChild(): void {
   process.stdout.write(
     "\x1b[0m\x1b[?25h\x1b[?1049l\x1b[?1l\x1b[<u\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1015l\x1b[?1004l"
   );
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/terminal.ts:resetTerminalForChild:afterWrite',message:'resetTerminalForChild wrote escape sequences',data:{wroteEscapes:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
 
   if (process.stdin.isTTY) {
     try {
@@ -47,14 +41,8 @@ export function resetTerminalForChild(): void {
         stdout: "inherit",
         stderr: "inherit",
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/terminal.ts:resetTerminalForChild:stty',message:'stty sane executed',data:{sttyExecuted:true},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
     } catch {
       // Best-effort reset; ignore if stty is unavailable.
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/e9da0001-9545-4aee-8bfe-0a658987fe33',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/terminal.ts:resetTerminalForChild:stty',message:'stty sane failed',data:{sttyExecuted:false},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
     }
   }
 }
