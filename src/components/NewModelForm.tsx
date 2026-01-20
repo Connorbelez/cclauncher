@@ -6,7 +6,7 @@ import { theme } from "@/theme";
 import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
 import { ConfirmModal } from "./ConfirmModal";
-import { saveModelToFile, type SaveModelResult } from "@/utils/models";
+import { saveModel, type StoreResult } from "@/lib/store";
 
 const newModelSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -27,7 +27,7 @@ const newModelSchema = z.object({
  * Renders an interactive "Create New Model" form with keyboard navigation, validation, and save/overwrite confirmation flows.
  *
  * The component manages form state for model identity and Anthropica API configuration, prevents accidental exit when changes are pending,
- * validates input using the `newModelSchema`, and persists configurations via `saveModelToFile`. It also exposes keyboard shortcuts
+ * validates input using the `newModelSchema`, and persists configurations via `saveModel`. It also exposes keyboard shortcuts
  * for field navigation, submit (Enter) and cancel (Esc), and shows inline error messages when validation or save fails.
  *
  * @returns The form UI for creating a new model, or `null` when the form is not focused.
@@ -92,7 +92,7 @@ export function NewModelForm() {
   }, [setModalOpen]);
 
   const handleSave = useCallback(
-    (allowOverwrite: boolean): SaveModelResult => {
+    (allowOverwrite: boolean): StoreResult<void> => {
       setErrorMessage(null);
 
       const validatedModel = newModelSchema.safeParse({
@@ -113,10 +113,7 @@ export function NewModelForm() {
         return { ok: false, reason: "validation", message };
       }
 
-      const result = saveModelToFile(validatedModel.data, {
-        allowOverwrite,
-        setOrderIfMissing: true,
-      });
+      const result = saveModel(validatedModel.data, { allowOverwrite });
 
       if (!result.ok) {
         if (result.reason !== "duplicate") {
