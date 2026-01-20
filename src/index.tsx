@@ -507,14 +507,20 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
         </box>
       </box>
       <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1}>
-        <text attributes={TextAttributes.DIM}>Legend:</text>
-        <text attributes={TextAttributes.DIM}>n: New</text>
-        <text attributes={TextAttributes.DIM}>e: Edit</text>
-        <text attributes={TextAttributes.DIM}>Enter: Launch</text>
-        {isGitRepo && <text attributes={TextAttributes.DIM}>w: New Worktree</text>}
-        {isGitRepo && <text attributes={TextAttributes.DIM}>g: Git Worktrees</text>}
-        <text attributes={TextAttributes.DIM}>arrows: Navigate</text>
-        <text attributes={TextAttributes.DIM}>esc: Exit Edit</text>
+        <text attributes={TextAttributes.DIM}>[n] New</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[e] Edit</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[Enter] Launch</text>
+        {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>[w] New Worktree</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
+        {isGitRepo && <text attributes={TextAttributes.DIM}>[g] Git Worktrees</text>}
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[↑↓] Navigate</text>
+        <text attributes={TextAttributes.DIM}>·</text>
+        <text attributes={TextAttributes.DIM}>[Esc] Exit Edit</text>
+        <text attributes={TextAttributes.DIM}>·</text>
         <ModeIndicator moveMode={moveMode} launching={launching} />
       </box>
     </FocusProvider>
