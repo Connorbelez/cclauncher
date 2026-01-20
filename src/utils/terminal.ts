@@ -40,7 +40,9 @@ export function resetTerminalForChild(): void {
 
   if (process.stdin.isTTY) {
     try {
-      Bun.spawnSync(["stty", "sane"], {
+      // Type assertion needed due to Bun type definitions mismatch
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (Bun.spawnSync as any)(["stty", "sane"], {
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",
