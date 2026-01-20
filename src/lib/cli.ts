@@ -71,7 +71,7 @@ EXAMPLES:
 CONFIG:
   Models are stored at: ${getStorePath()}
 
-For more information, visit: https://github.com/connor/cclauncher
+For more information, visit: https://github.com/Connorbelez/cclauncher
 `.trim();
 
 /**

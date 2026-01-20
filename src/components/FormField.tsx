@@ -158,7 +158,7 @@ export function FormField({
             }}
           >
             <input
-              value={isPassword && editMode ? maskedValue : value}
+              value={isPassword ? maskedValue : value}
               placeholder={placeholder}
               focused={isFocused}
               onInput={onChange ? handleInput : undefined}

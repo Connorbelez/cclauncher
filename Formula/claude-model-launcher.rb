@@ -1,6 +1,6 @@
 class ClaudeModelLauncher < Formula
   desc "TUI for managing Claude Code model configurations"
-  homepage "https://github.com/connor/cclauncher"
+  homepage "https://github.com/Connorbelez/cclauncher"
   url "https://registry.npmjs.org/claude-model-launcher/-/claude-model-launcher-1.0.0.tgz"
   sha256 "a5df7d61c8b2b5ee69151fd9e18694fe3c0bce8ab2c6dcc3a6c3f362b7082951"
   license "Apache-2.0"
