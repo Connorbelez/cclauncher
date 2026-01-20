@@ -23,6 +23,16 @@ const newModelSchema = z.object({
   }),
 });
 
+const createEmptyModelValue = () => ({
+  ANTHROPIC_BASE_URL: "",
+  ANTHROPIC_AUTH_TOKEN: "",
+  ANTHROPIC_MODEL: "",
+  ANTHROPIC_SMALL_FAST_MODEL: "",
+  ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+  ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+});
+
 /**
  * Renders an interactive "Create New Model" form with keyboard navigation, validation, and save/overwrite confirmation flows.
  *
@@ -43,15 +53,7 @@ export function NewModelForm() {
   } = useFocusState("new_model");
   const [newModelName, setNewModelName] = useState("");
   const [newModelDescription, setNewModelDescription] = useState("");
-  const [newModelValue, setNewModelValue] = useState({
-    ANTHROPIC_BASE_URL: "",
-    ANTHROPIC_AUTH_TOKEN: "",
-    ANTHROPIC_MODEL: "",
-    ANTHROPIC_SMALL_FAST_MODEL: "",
-    ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-    ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
-  });
+  const [newModelValue, setNewModelValue] = useState(createEmptyModelValue);
   const [activeFieldIndex, setActiveFieldIndex] = useState(0);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -127,15 +129,7 @@ export function NewModelForm() {
 
       setNewModelName("");
       setNewModelDescription("");
-      setNewModelValue({
-        ANTHROPIC_BASE_URL: "",
-        ANTHROPIC_AUTH_TOKEN: "",
-        ANTHROPIC_MODEL: "",
-        ANTHROPIC_SMALL_FAST_MODEL: "",
-        ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-        ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
-      });
+      setNewModelValue(createEmptyModelValue());
       setErrorMessage(null);
       setFocusedId("model_selection");
       return result;
@@ -146,15 +140,7 @@ export function NewModelForm() {
   const resetForm = useCallback(() => {
     setNewModelName("");
     setNewModelDescription("");
-    setNewModelValue({
-      ANTHROPIC_BASE_URL: "",
-      ANTHROPIC_AUTH_TOKEN: "",
-      ANTHROPIC_MODEL: "",
-      ANTHROPIC_SMALL_FAST_MODEL: "",
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "",
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "",
-      ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
-    });
+    setNewModelValue(createEmptyModelValue());
     setActiveFieldIndex(0);
     setErrorMessage(null);
   }, []);
@@ -248,8 +234,8 @@ export function NewModelForm() {
               style={{
                 border: true,
                 borderStyle: "rounded",
-                borderColor: "#ef4444", // Red border for errors
-                backgroundColor: "#1f1f1f", // Dark background
+                borderColor: theme.colors.error,
+                backgroundColor: theme.colors.surface,
                 paddingLeft: 1,
                 paddingRight: 1,
                 paddingTop: 1,
@@ -259,7 +245,7 @@ export function NewModelForm() {
             >
               <text
                 attributes={TextAttributes.BOLD}
-                style={{ fg: "#ef4444", marginBottom: 1 }}
+                style={{ fg: theme.colors.error, marginBottom: 1 }}
               >
                 Error
               </text>
