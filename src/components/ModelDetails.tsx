@@ -7,6 +7,7 @@ import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
 import { ConfirmModal } from "./ConfirmModal";
 import { z } from "zod";
+import { MODEL_FORM_FIELD_COUNT } from "./modelFormFields";
 
 export type ModelDetailsProps = {
   model: SelectOption;
@@ -239,12 +240,13 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 
     if (editMode) {
       // In edit mode, arrow keys navigate between fields
-      const TOTAL_FIELDS = 9; // Name, Description, and the 7 config fields
-
       if (key.name === "down") {
-        setActiveFieldIndex((prev) => (prev + 1) % TOTAL_FIELDS);
+        setActiveFieldIndex((prev) => (prev + 1) % MODEL_FORM_FIELD_COUNT);
       } else if (key.name === "up") {
-        setActiveFieldIndex((prev) => (prev - 1 + TOTAL_FIELDS) % TOTAL_FIELDS);
+        setActiveFieldIndex(
+          (prev) =>
+            (prev - 1 + MODEL_FORM_FIELD_COUNT) % MODEL_FORM_FIELD_COUNT
+        );
       }
 
       if (key.name === "return") {

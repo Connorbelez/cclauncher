@@ -56,7 +56,7 @@ claude-launch --add --name mymodel \
 
 Models are stored in:
 
-```
+```text
 ~/.claude-model-launcher/models.json
 ```
 

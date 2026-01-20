@@ -7,6 +7,7 @@ import { FormField } from "./FormField";
 import { TextAttributes } from "@opentui/core";
 import { ConfirmModal } from "./ConfirmModal";
 import { saveModelToFile, type SaveModelResult } from "@/utils/models";
+import { MODEL_FORM_FIELD_COUNT } from "./modelFormFields";
 
 const newModelSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -162,12 +163,12 @@ export function NewModelForm() {
   useKeyboard((key) => {
     if (!isFocused || isConfirmOpen || isOverwriteConfirmOpen) return;
 
-    const TOTAL_FIELDS = 9;
-
     if (key.name === "down") {
-      setActiveFieldIndex((prev) => (prev + 1) % TOTAL_FIELDS);
+      setActiveFieldIndex((prev) => (prev + 1) % MODEL_FORM_FIELD_COUNT);
     } else if (key.name === "up") {
-      setActiveFieldIndex((prev) => (prev - 1 + TOTAL_FIELDS) % TOTAL_FIELDS);
+      setActiveFieldIndex(
+        (prev) => (prev - 1 + MODEL_FORM_FIELD_COUNT) % MODEL_FORM_FIELD_COUNT
+      );
     } else if (key.name === "escape") {
       if (isDirty) {
         openConfirm();
@@ -180,6 +181,22 @@ export function NewModelForm() {
       }
     }
   });
+
+  useEffect(() => {
+    if (!errorMessage) return;
+    if (
+      newModelName.trim() &&
+      newModelValue.ANTHROPIC_BASE_URL.trim() &&
+      newModelValue.ANTHROPIC_MODEL.trim()
+    ) {
+      setErrorMessage(null);
+    }
+  }, [
+    errorMessage,
+    newModelName,
+    newModelValue.ANTHROPIC_BASE_URL,
+    newModelValue.ANTHROPIC_MODEL,
+  ]);
 
   useEffect(() => {
     setExitGuard("new_model", (key) => {
@@ -287,8 +304,6 @@ export function NewModelForm() {
               editMode={true}
               onChange={(value) => {
                 setNewModelName(value);
-                // Clear error when user starts typing
-                if (errorMessage) setErrorMessage(null);
               }}
               placeholder="e.g. My Custom Model"
             />

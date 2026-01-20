@@ -109,20 +109,31 @@ describe("Theme configuration", () => {
 
   describe("Accessibility considerations", () => {
     it("should have sufficient contrast between text and background", () => {
-      // Simple luminance calculation for contrast checking
-      const getLuminance = (hex: string) => {
-        const r = parseInt(hex.slice(1, 3), 16) / 255;
-        const g = parseInt(hex.slice(3, 5), 16) / 255;
-        const b = parseInt(hex.slice(5, 7), 16) / 255;
-        return 0.299 * r + 0.587 * g + 0.114 * b;
+      const toLinear = (channel: number) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045
+          ? normalized / 12.92
+          : ((normalized + 0.055) / 1.055) ** 2.4;
       };
 
-      const bgLuminance = getLuminance(theme.colors.background);
-      const textLuminance = getLuminance(theme.colors.text.primary);
+      const getRelativeLuminance = (hex: string) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        const rLin = toLinear(r);
+        const gLin = toLinear(g);
+        const bLin = toLinear(b);
+        return 0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin;
+      };
 
-      // Contrast ratio should be significant (simplified check)
-      const contrastDiff = Math.abs(textLuminance - bgLuminance);
-      expect(contrastDiff).toBeGreaterThan(0.4);
+      const bgLuminance = getRelativeLuminance(theme.colors.background);
+      const textLuminance = getRelativeLuminance(theme.colors.text.primary);
+      const lighter = Math.max(bgLuminance, textLuminance);
+      const darker = Math.min(bgLuminance, textLuminance);
+      const contrastRatio = (lighter + 0.05) / (darker + 0.05);
+
+      // WCAG AA contrast ratio for normal text
+      expect(contrastRatio).toBeGreaterThanOrEqual(4.5);
     });
 
     it("should have distinct primary vs secondary text", () => {

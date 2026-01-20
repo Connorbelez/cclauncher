@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { prepareEnvironment, maskToken, formatModelInfo } from "./launcher";
 import type { Model } from "./store";
 

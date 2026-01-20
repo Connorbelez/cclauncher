@@ -29,13 +29,15 @@ describe("generateWorktreePath", () => {
     expect(worktreeName).toMatch(/^claude-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
   });
 
-  it("should generate unique paths for different calls", async () => {
+  it("should generate unique paths for different calls", () => {
     const repoRoot = "/home/user/project";
 
-    // Due to timestamp resolution, we need a small delay
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     const path1 = generateWorktreePath(repoRoot);
-    await new Promise((resolve) => setTimeout(resolve, 1100)); // Wait just over 1 second
+    vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
     const path2 = generateWorktreePath(repoRoot);
+    vi.useRealTimers();
 
     expect(path1).not.toBe(path2);
   });
@@ -44,9 +46,7 @@ describe("generateWorktreePath", () => {
     const repoRoot = "/home/user/project/";
     const path = generateWorktreePath(repoRoot);
 
-    // Note: The function does simple string concatenation, so trailing slash
-    // results in double slash. This documents the current behavior.
-    expect(path).toContain("/home/user/project//.worktrees/");
+    expect(path).toContain("/home/user/project/.worktrees/");
     expect(path).toContain("claude-");
   });
 

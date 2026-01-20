@@ -148,6 +148,9 @@ export async function launchClaudeCode(
       return await launchWithPty(env, cwd);
     } catch (err) {
       // Fall through to Bun.spawn fallback
+      if (process.env.DEBUG) {
+        console.error("PTY launch failed, falling back to Bun.spawn:", err);
+      }
     }
   }
 
