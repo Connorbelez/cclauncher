@@ -10,8 +10,12 @@ const WINDOWS_WRITE: ClipboardCommand = {
 const WINDOWS_READ: ClipboardCommand = {
   cmd: ["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
 };
-const LINUX_WRITE: ClipboardCommand = { cmd: ["xclip", "-selection", "clipboard"] };
-const LINUX_READ: ClipboardCommand = { cmd: ["xclip", "-selection", "clipboard", "-o"] };
+const LINUX_WRITE: ClipboardCommand = {
+  cmd: ["xclip", "-selection", "clipboard"],
+};
+const LINUX_READ: ClipboardCommand = {
+  cmd: ["xclip", "-selection", "clipboard", "-o"],
+};
 
 function getCommands() {
   switch (process.platform) {
@@ -42,9 +46,7 @@ export async function readClipboard(): Promise<string> {
   const { read } = getCommands();
   try {
     const proc = Bun.spawn(read.cmd, { stdout: "pipe" });
-    const output = proc.stdout
-      ? await new Response(proc.stdout).text()
-      : "";
+    const output = proc.stdout ? await new Response(proc.stdout).text() : "";
     await proc.exited;
     return output.replace(/\r\n/g, "\n");
   } catch (error) {

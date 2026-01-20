@@ -34,7 +34,11 @@ export type ModelsJson = Record<string, Model>;
 
 export type StoreResult<T> =
   | { ok: true; data: T }
-  | { ok: false; reason: "read" | "write" | "validation" | "not_found" | "duplicate"; message: string };
+  | {
+      ok: false;
+      reason: "read" | "write" | "validation" | "not_found" | "duplicate";
+      message: string;
+    };
 
 /**
  * Resolve environment variable references in a value.
@@ -69,7 +73,10 @@ function ensureStoreDir(): StoreResult<void> {
 /**
  * Migrate from old array-based format to new key-value format.
  */
-function migrateOldFormat(oldData: { version?: number; models?: unknown[] }): ModelsJson {
+function migrateOldFormat(oldData: {
+  version?: number;
+  models?: unknown[];
+}): ModelsJson {
   const migrated: ModelsJson = {};
 
   if (Array.isArray(oldData.models)) {
@@ -130,7 +137,11 @@ export function readModels(): StoreResult<ModelsJson> {
     }
 
     // Detect and migrate old array-based format
-    if ("version" in parsed && "models" in parsed && Array.isArray(parsed.models)) {
+    if (
+      "version" in parsed &&
+      "models" in parsed &&
+      Array.isArray(parsed.models)
+    ) {
       const migrated = migrateOldFormat(parsed);
       // Write migrated data back
       const writeResult = writeModels(migrated);
@@ -145,7 +156,12 @@ export function readModels(): StoreResult<ModelsJson> {
     for (const [key, model] of Object.entries(parsed)) {
       const m = model as Model;
       // Ensure each model has a valid value object
-      if (m && typeof m === "object" && m.value && typeof m.value === "object") {
+      if (
+        m &&
+        typeof m === "object" &&
+        m.value &&
+        typeof m.value === "object"
+      ) {
         validatedData[key] = m;
       }
     }
@@ -248,7 +264,9 @@ export function saveModel(
   // Validate model
   const validation = modelSchema.safeParse(model);
   if (!validation.success) {
-    const errors = validation.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join("\n");
+    const errors = validation.error.issues
+      .map((e) => `${e.path.join(".")}: ${e.message}`)
+      .join("\n");
     return {
       ok: false,
       reason: "validation",
@@ -281,7 +299,10 @@ export function saveModel(
 
   // Calculate order if not set
   if (model.order === undefined) {
-    const maxOrder = Math.max(0, ...Object.values(models).map((m) => m.order ?? 0));
+    const maxOrder = Math.max(
+      0,
+      ...Object.values(models).map((m) => m.order ?? 0)
+    );
     model.order = maxOrder + 1;
   }
 
@@ -341,7 +362,9 @@ export function getModelList(): StoreResult<Model[]> {
   const result = readModels();
   if (!result.ok) return result;
 
-  const models = Object.values(result.data).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const models = Object.values(result.data).sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0)
+  );
   return { ok: true, data: models };
 }
 
@@ -355,7 +378,9 @@ export function getStorePath(): string {
 /**
  * Migrate models from a source file (e.g., in-source models.json).
  */
-export function migrateModels(sourceModels: ModelsJson): StoreResult<{ migrated: number; skipped: number }> {
+export function migrateModels(
+  sourceModels: ModelsJson
+): StoreResult<{ migrated: number; skipped: number }> {
   const readResult = readModels();
   if (!readResult.ok) return readResult;
 

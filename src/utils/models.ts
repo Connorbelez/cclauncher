@@ -6,7 +6,11 @@ type ModelsJson = Record<string, SelectOption & { order?: number }>;
 
 export type SaveModelResult =
   | { ok: true }
-  | { ok: false; reason: "validation" | "duplicate" | "read" | "write"; message: string };
+  | {
+      ok: false;
+      reason: "validation" | "duplicate" | "read" | "write";
+      message: string;
+    };
 
 const MODELS_PATH = path.resolve(process.cwd(), "src/models.json");
 
@@ -15,7 +19,9 @@ const formatError = (context: string, err: unknown) => {
   return `${context}: ${message}`;
 };
 
-const readModelsJson = (): { ok: true; models: ModelsJson } | { ok: false; message: string; reason: "read" } => {
+const readModelsJson = ():
+  | { ok: true; models: ModelsJson }
+  | { ok: false; message: string; reason: "read" } => {
   try {
     const raw = fs.readFileSync(MODELS_PATH, "utf8");
     const parsed = JSON.parse(raw);
@@ -23,7 +29,8 @@ const readModelsJson = (): { ok: true; models: ModelsJson } | { ok: false; messa
       return {
         ok: false,
         reason: "read",
-        message: "Models file is not a valid object. Please fix the JSON structure.",
+        message:
+          "Models file is not a valid object. Please fix the JSON structure.",
       };
     }
     return { ok: true, models: parsed as ModelsJson };
@@ -36,7 +43,9 @@ const readModelsJson = (): { ok: true; models: ModelsJson } | { ok: false; messa
   }
 };
 
-const writeModelsJson = (models: ModelsJson): { ok: true } | { ok: false; message: string; reason: "write" } => {
+const writeModelsJson = (
+  models: ModelsJson
+): { ok: true } | { ok: false; message: string; reason: "write" } => {
   try {
     fs.writeFileSync(MODELS_PATH, JSON.stringify(models, null, 2));
     return { ok: true };
@@ -51,7 +60,11 @@ const writeModelsJson = (models: ModelsJson): { ok: true } | { ok: false; messag
 
 const getNextModelOrder = (models: ModelsJson): number => {
   const numericOrders = Object.values(models)
-    .map((model) => (typeof model.order === "number" && Number.isFinite(model.order) ? model.order : null))
+    .map((model) =>
+      typeof model.order === "number" && Number.isFinite(model.order)
+        ? model.order
+        : null
+    )
     .filter((order): order is number => order !== null);
   const maxOrder = numericOrders.length > 0 ? Math.max(...numericOrders) : -1;
   return maxOrder + 1;
@@ -59,14 +72,22 @@ const getNextModelOrder = (models: ModelsJson): number => {
 
 export const saveModelToFile = (
   model: SelectOption & { order?: number },
-  options: { originalName?: string; allowOverwrite?: boolean; setOrderIfMissing?: boolean } = {},
+  options: {
+    originalName?: string;
+    allowOverwrite?: boolean;
+    setOrderIfMissing?: boolean;
+  } = {}
 ): SaveModelResult => {
   const readResult = readModelsJson();
   if (!readResult.ok) {
     return readResult;
   }
 
-  const { originalName, allowOverwrite = false, setOrderIfMissing = false } = options;
+  const {
+    originalName,
+    allowOverwrite = false,
+    setOrderIfMissing = false,
+  } = options;
   const models = readResult.models;
   const targetName = model.name;
   const hasExisting = Boolean(models[targetName]);
@@ -85,7 +106,8 @@ export const saveModelToFile = (
   }
 
   const { order: incomingOrder, ...restModel } = model;
-  const existing: (SelectOption & { order?: number }) | undefined = models[targetName];
+  const existing: (SelectOption & { order?: number }) | undefined =
+    models[targetName];
   const nextModel: SelectOption & { order?: number } = {
     ...(existing ?? {}),
     ...restModel,
@@ -95,7 +117,9 @@ export const saveModelToFile = (
     nextModel.order = incomingOrder;
   } else if (setOrderIfMissing) {
     const existingOrder =
-      typeof existing?.order === "number" && Number.isFinite(existing.order) ? existing.order : null;
+      typeof existing?.order === "number" && Number.isFinite(existing.order)
+        ? existing.order
+        : null;
     nextModel.order = existingOrder ?? getNextModelOrder(models);
   } else if (typeof existing?.order === "number") {
     nextModel.order = existing.order;

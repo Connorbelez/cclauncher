@@ -12,7 +12,11 @@ try {
 
 export type LaunchResult =
   | { ok: true; exitCode: number }
-  | { ok: false; reason: "not_found" | "spawn_failed" | "signal"; message: string };
+  | {
+      ok: false;
+      reason: "not_found" | "spawn_failed" | "signal";
+      message: string;
+    };
 
 export type LaunchOptions = {
   /** Working directory to launch Claude Code in */
@@ -40,7 +44,10 @@ export async function checkClaudeInstalled(): Promise<boolean> {
  * Resolves env: references and only sets non-empty values.
  */
 export function prepareEnvironment(model: Model): Record<string, string> {
-  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  const env: Record<string, string> = { ...process.env } as Record<
+    string,
+    string
+  >;
   const value = model.value;
 
   // Core model settings
@@ -57,20 +64,28 @@ export function prepareEnvironment(model: Model): Record<string, string> {
   }
 
   if (value.ANTHROPIC_SMALL_FAST_MODEL) {
-    env.ANTHROPIC_SMALL_FAST_MODEL = resolveEnvRef(value.ANTHROPIC_SMALL_FAST_MODEL);
+    env.ANTHROPIC_SMALL_FAST_MODEL = resolveEnvRef(
+      value.ANTHROPIC_SMALL_FAST_MODEL
+    );
   }
 
   // Optional model defaults
   if (value.ANTHROPIC_DEFAULT_SONNET_MODEL) {
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL = resolveEnvRef(value.ANTHROPIC_DEFAULT_SONNET_MODEL);
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = resolveEnvRef(
+      value.ANTHROPIC_DEFAULT_SONNET_MODEL
+    );
   }
 
   if (value.ANTHROPIC_DEFAULT_OPUS_MODEL) {
-    env.ANTHROPIC_DEFAULT_OPUS_MODEL = resolveEnvRef(value.ANTHROPIC_DEFAULT_OPUS_MODEL);
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = resolveEnvRef(
+      value.ANTHROPIC_DEFAULT_OPUS_MODEL
+    );
   }
 
   if (value.ANTHROPIC_DEFAULT_HAIKU_MODEL) {
-    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = resolveEnvRef(value.ANTHROPIC_DEFAULT_HAIKU_MODEL);
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = resolveEnvRef(
+      value.ANTHROPIC_DEFAULT_HAIKU_MODEL
+    );
   }
 
   // Optional settings - only set if explicitly configured
@@ -89,7 +104,10 @@ export function prepareEnvironment(model: Model): Record<string, string> {
  * Launch Claude Code with the given model configuration using bun-pty for proper TTY handling.
  * Falls back to Bun.spawn if bun-pty is unavailable.
  */
-export async function launchClaudeCode(model: Model, options?: LaunchOptions): Promise<LaunchResult> {
+export async function launchClaudeCode(
+  model: Model,
+  options?: LaunchOptions
+): Promise<LaunchResult> {
   const cwd = options?.cwd ?? process.cwd();
   resetTerminalForChild();
 
@@ -144,7 +162,10 @@ export async function launchClaudeCode(model: Model, options?: LaunchOptions): P
  * Launch Claude Code using bun-pty for proper PTY handling.
  * This gives the child process a real TTY with independent input buffering.
  */
-async function launchWithPty(env: Record<string, string>, cwd: string): Promise<LaunchResult> {
+async function launchWithPty(
+  env: Record<string, string>,
+  cwd: string
+): Promise<LaunchResult> {
   if (!bunPtySpawn) {
     throw new Error("bun-pty not available");
   }

@@ -142,7 +142,8 @@ export function parseArgs(args: string[]): CliCommand {
         ANTHROPIC_BASE_URL: flags.get("endpoint") || "",
         ANTHROPIC_AUTH_TOKEN: flags.get("token") || "",
         ANTHROPIC_MODEL: flags.get("model-id") || "",
-        ANTHROPIC_SMALL_FAST_MODEL: flags.get("fast-model") || flags.get("model-id") || "",
+        ANTHROPIC_SMALL_FAST_MODEL:
+          flags.get("fast-model") || flags.get("model-id") || "",
         ANTHROPIC_DEFAULT_SONNET_MODEL: "",
         ANTHROPIC_DEFAULT_OPUS_MODEL: "",
         ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
@@ -244,7 +245,9 @@ export async function executeCommand(command: CliCommand): Promise<number> {
         return 1;
       }
 
-      console.log(`Launching Claude Code with default model: ${result.data.name}`);
+      console.log(
+        `Launching Claude Code with default model: ${result.data.name}`
+      );
       console.log(`Endpoint: ${result.data.value.ANTHROPIC_BASE_URL}`);
       console.log();
 

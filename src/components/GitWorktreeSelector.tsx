@@ -42,7 +42,10 @@ function formatWorktreeOption(worktree: WorktreeInfo): SelectOption {
 
   // Pad to create right-aligned stats (assuming ~50 char width)
   const totalWidth = 45;
-  const paddingNeeded = Math.max(1, totalWidth - leftPart.length - statsDisplay.length);
+  const paddingNeeded = Math.max(
+    1,
+    totalWidth - leftPart.length - statsDisplay.length
+  );
   const name = statsDisplay
     ? `${leftPart}${" ".repeat(paddingNeeded)}${statsDisplay}`
     : leftPart;
@@ -71,7 +74,8 @@ export function GitWorktreeSelector({
   onRefresh,
   selectedModelName,
 }: GitWorktreeSelectorProps) {
-  const { isFocused, focusedId, setFocusedId } = useFocusState("worktree_selection");
+  const { isFocused, focusedId, setFocusedId } =
+    useFocusState("worktree_selection");
 
   // Find the selected index
   const selectedIndex = useMemo(() => {
@@ -151,7 +155,7 @@ export function GitWorktreeSelector({
         </scrollbox>
         <box style={{ paddingLeft: 1, height: 1 }}>
           <text style={{ fg: theme.colors.text.muted }}>
-            [n] New Worktree  [g/Esc] Back
+            [n] New Worktree [g/Esc] Back
           </text>
         </box>
       </box>

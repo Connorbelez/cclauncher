@@ -1,4 +1,8 @@
-import { createCliRenderer, TextAttributes, type SelectOption } from "@opentui/core";
+import {
+  createCliRenderer,
+  TextAttributes,
+  type SelectOption,
+} from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { useRenderer } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,7 +24,13 @@ import {
 } from "./lib/store";
 import { launchClaudeCode } from "./lib/launcher";
 import { resetTerminalForChild } from "./utils/terminal";
-import { getGitRepoRoot, generateWorktreePath, createDetachedWorktree, listWorktrees, type WorktreeInfo } from "./lib/git";
+import {
+  getGitRepoRoot,
+  generateWorktreePath,
+  createDetachedWorktree,
+  listWorktrees,
+  type WorktreeInfo,
+} from "./lib/git";
 import { GitWorktreeSelector } from "./components/GitWorktreeSelector";
 import modelsJson from "./models.json";
 
@@ -49,7 +59,11 @@ function loadModels(): (SelectOption & { order?: number })[] {
   // First, try to migrate in-source models if the store is empty
   const storeResult = getModelList();
 
-  if (storeResult.ok && storeResult.data.length === 0 && Object.keys(modelsJson).length > 0) {
+  if (
+    storeResult.ok &&
+    storeResult.data.length === 0 &&
+    Object.keys(modelsJson).length > 0
+  ) {
     // Migrate from in-source models.json
     const migrationSource: ModelsJson = {};
     for (const [key, value] of Object.entries(modelsJson)) {
@@ -123,14 +137,20 @@ if (initialModels.length === 0) {
 
 export type SaveModelResult =
   | { ok: true }
-  | { ok: false; reason: "validation" | "duplicate" | "read" | "write"; message: string };
+  | {
+      ok: false;
+      reason: "validation" | "duplicate" | "read" | "write";
+      message: string;
+    };
 
 const saveModel = (
   model: SelectOption,
   originalName?: string,
   options?: { allowOverwrite?: boolean }
 ): SaveModelResult => {
-  const storeModel = selectOptionToModel(model as SelectOption & { order?: number });
+  const storeModel = selectOptionToModel(
+    model as SelectOption & { order?: number }
+  );
   const validatedModel = modelSchema.safeParse(storeModel);
   if (!validatedModel.success) {
     const errorMessages = validatedModel.error.issues.map((err) => {
@@ -160,9 +180,21 @@ const saveModel = (
   return { ok: true };
 };
 
-function ModeIndicator({ moveMode, launching }: { moveMode: boolean; launching: boolean }) {
+function ModeIndicator({
+  moveMode,
+  launching,
+}: {
+  moveMode: boolean;
+  launching: boolean;
+}) {
   const { editMode } = useFocusContext();
-  const modeLabel = launching ? "Launching..." : moveMode ? "Move" : editMode ? "Edit" : "View";
+  const modeLabel = launching
+    ? "Launching..."
+    : moveMode
+      ? "Move"
+      : editMode
+        ? "Edit"
+        : "View";
   const modeColor = launching
     ? theme.colors.warning
     : moveMode
@@ -179,13 +211,18 @@ function ModeIndicator({ moveMode, launching }: { moveMode: boolean; launching: 
 }
 
 function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
-  const [modelsState, setModelsState] = useState<(SelectOption & { order?: number })[]>(initialModels);
-  const [selectedModel, setSelectedModel] = useState<SelectOption>(initialModels[0]!);
+  const [modelsState, setModelsState] =
+    useState<(SelectOption & { order?: number })[]>(initialModels);
+  const [selectedModel, setSelectedModel] = useState<SelectOption>(
+    initialModels[0]!
+  );
   const modelsStateRef = useRef(modelsState);
   const [moveMode, setMoveMode] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([]);
-  const [selectedWorktree, setSelectedWorktree] = useState<WorktreeInfo | null>(null);
+  const [selectedWorktree, setSelectedWorktree] = useState<WorktreeInfo | null>(
+    null
+  );
   const renderer = useRenderer();
   const isGitRepo = gitRepoRoot !== null;
 
@@ -259,7 +296,11 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
     }
     const onPaste = (data: unknown) => {
       const text = typeof data === "string" ? data : "";
-      const keyInput = (renderer as unknown as { keyInput?: { processPaste?: (text: string) => void } }).keyInput;
+      const keyInput = (
+        renderer as unknown as {
+          keyInput?: { processPaste?: (text: string) => void };
+        }
+      ).keyInput;
       const focused = (
         renderer as unknown as {
           currentFocusedRenderable?: {
@@ -269,12 +310,18 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
           };
         }
       ).currentFocusedRenderable;
-      const beforeLength = typeof focused?.value === "string" ? focused.value.length : null;
+      const beforeLength =
+        typeof focused?.value === "string" ? focused.value.length : null;
       if (typeof keyInput?.processPaste === "function") {
         keyInput.processPaste(text);
       }
-      const afterLength = typeof focused?.value === "string" ? focused.value.length : null;
-      if (typeof focused?.insertText === "function" && beforeLength !== null && afterLength === beforeLength) {
+      const afterLength =
+        typeof focused?.value === "string" ? focused.value.length : null;
+      if (
+        typeof focused?.insertText === "function" &&
+        beforeLength !== null &&
+        afterLength === beforeLength
+      ) {
         focused.insertText(text);
       }
     };
@@ -288,47 +335,53 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
     modelsStateRef.current = modelsState;
   }, [modelsState]);
 
-  const persistModelOrder = useCallback((nextModels: (SelectOption & { order?: number })[]) => {
-    // Convert to store format and persist
-    const modelsObj: ModelsJson = {};
-    nextModels.forEach((model, index) => {
-      modelsObj[model.name] = {
-        name: model.name,
-        description: model.description || "",
-        order: index + 1,
-        value: model.value as Model["value"],
-      };
-    });
-    const result = writeModels(modelsObj);
-    if (!result.ok) {
-      console.error("Failed to persist model order:", result.message);
-    }
-  }, []);
+  const persistModelOrder = useCallback(
+    (nextModels: (SelectOption & { order?: number })[]) => {
+      // Convert to store format and persist
+      const modelsObj: ModelsJson = {};
+      nextModels.forEach((model, index) => {
+        modelsObj[model.name] = {
+          name: model.name,
+          description: model.description || "",
+          order: index + 1,
+          value: model.value as Model["value"],
+        };
+      });
+      const result = writeModels(modelsObj);
+      if (!result.ok) {
+        console.error("Failed to persist model order:", result.message);
+      }
+    },
+    []
+  );
 
-  const handleMoveModel = useCallback((fromIndex: number, direction: "up" | "down") => {
-    setModelsState((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length) {
-        return prev;
-      }
-      const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
-      if (toIndex < 0 || toIndex >= prev.length) {
-        return prev;
-      }
-      const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved!);
-      const nextWithOrder = next.map((model, index) => ({
-        ...model,
-        order: index + 1,
-      }));
-      const nextSelected = nextWithOrder[toIndex];
-      if (!nextSelected) {
-        return prev;
-      }
-      setSelectedModel(nextSelected);
-      return nextWithOrder;
-    });
-  }, []);
+  const handleMoveModel = useCallback(
+    (fromIndex: number, direction: "up" | "down") => {
+      setModelsState((prev) => {
+        if (fromIndex < 0 || fromIndex >= prev.length) {
+          return prev;
+        }
+        const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1;
+        if (toIndex < 0 || toIndex >= prev.length) {
+          return prev;
+        }
+        const next = [...prev];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(toIndex, 0, moved!);
+        const nextWithOrder = next.map((model, index) => ({
+          ...model,
+          order: index + 1,
+        }));
+        const nextSelected = nextWithOrder[toIndex];
+        if (!nextSelected) {
+          return prev;
+        }
+        setSelectedModel(nextSelected);
+        return nextWithOrder;
+      });
+    },
+    []
+  );
 
   const handleReorderEnd = useCallback(() => {
     persistModelOrder(modelsStateRef.current);
@@ -350,7 +403,10 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
       if (options?.useWorktree && gitRepoRoot) {
         const worktreePath = generateWorktreePath(gitRepoRoot);
         console.log(`\nCreating worktree at: ${worktreePath}`);
-        const worktreeResult = await createDetachedWorktree(gitRepoRoot, worktreePath);
+        const worktreeResult = await createDetachedWorktree(
+          gitRepoRoot,
+          worktreePath
+        );
         if (!worktreeResult.ok) {
           console.error(`\nError creating worktree: ${worktreeResult.message}`);
           process.exit(1);
@@ -360,13 +416,17 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
       }
 
       console.log(`\nLaunching Claude Code with model: ${model.name}`);
-      console.log(`Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}`);
+      console.log(
+        `Endpoint: ${(model.value as Model["value"]).ANTHROPIC_BASE_URL}`
+      );
       if (launchCwd) {
         console.log(`Working directory: ${launchCwd}`);
       }
       console.log("");
 
-      const storeModel = selectOptionToModel(model as SelectOption & { order?: number });
+      const storeModel = selectOptionToModel(
+        model as SelectOption & { order?: number }
+      );
       const result = await launchClaudeCode(storeModel, { cwd: launchCwd });
 
       if (!result.ok) {
@@ -415,7 +475,9 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
       console.log(`Model: ${selectedModel.name}`);
       console.log("");
 
-      const storeModel = selectOptionToModel(selectedModel as SelectOption & { order?: number });
+      const storeModel = selectOptionToModel(
+        selectedModel as SelectOption & { order?: number }
+      );
       const result = await launchClaudeCode(storeModel, { cwd: worktree.path });
 
       if (!result.ok) {
@@ -438,7 +500,10 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
     const worktreePath = generateWorktreePath(gitRepoRoot);
     console.log(`\nCreating worktree at: ${worktreePath}`);
 
-    const worktreeResult = await createDetachedWorktree(gitRepoRoot, worktreePath);
+    const worktreeResult = await createDetachedWorktree(
+      gitRepoRoot,
+      worktreePath
+    );
     if (!worktreeResult.ok) {
       console.error(`\nError creating worktree: ${worktreeResult.message}`);
       process.exit(1);
@@ -448,8 +513,12 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
     console.log(`Model: ${selectedModel.name}`);
     console.log("");
 
-    const storeModel = selectOptionToModel(selectedModel as SelectOption & { order?: number });
-    const result = await launchClaudeCode(storeModel, { cwd: worktreeResult.path });
+    const storeModel = selectOptionToModel(
+      selectedModel as SelectOption & { order?: number }
+    );
+    const result = await launchClaudeCode(storeModel, {
+      cwd: worktreeResult.path,
+    });
 
     if (!result.ok) {
       console.error(`\nError: ${result.message}`);
@@ -500,16 +569,25 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
           )}
         </box>
       </box>
-      <box justifyContent="center" alignItems="flex-start" flexDirection="row" gap={1}>
+      <box
+        justifyContent="center"
+        alignItems="flex-start"
+        flexDirection="row"
+        gap={1}
+      >
         <text attributes={TextAttributes.DIM}>[n] New</text>
         <text attributes={TextAttributes.DIM}>·</text>
         <text attributes={TextAttributes.DIM}>[e] Edit</text>
         <text attributes={TextAttributes.DIM}>·</text>
         <text attributes={TextAttributes.DIM}>[Enter] Launch</text>
         {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
-        {isGitRepo && <text attributes={TextAttributes.DIM}>[w] New Worktree</text>}
+        {isGitRepo && (
+          <text attributes={TextAttributes.DIM}>[w] New Worktree</text>
+        )}
         {isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
-        {isGitRepo && <text attributes={TextAttributes.DIM}>[g] Git Worktrees</text>}
+        {isGitRepo && (
+          <text attributes={TextAttributes.DIM}>[g] Git Worktrees</text>
+        )}
         <text attributes={TextAttributes.DIM}>·</text>
         <text attributes={TextAttributes.DIM}>[↑↓] Navigate</text>
         <text attributes={TextAttributes.DIM}>·</text>

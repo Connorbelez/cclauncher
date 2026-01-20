@@ -114,7 +114,7 @@ export async function createDetachedWorktree(
     // Ensure the .worktrees directory exists
     const path = await import("path");
     const worktreesDir = path.dirname(worktreePath);
-    
+
     const fs = await import("fs");
     if (!fs.existsSync(worktreesDir)) {
       fs.mkdirSync(worktreesDir, { recursive: true });
@@ -130,7 +130,7 @@ export async function createDetachedWorktree(
       }
     );
     const exitCode = await proc.exited;
-    
+
     if (exitCode !== 0) {
       const stderr = await new Response(proc.stderr).text();
       return {
@@ -189,7 +189,9 @@ export type ListWorktreesResult =
  * @param repoRoot The root of the git repository
  * @returns List of worktree information or an error
  */
-export async function listWorktrees(repoRoot: string): Promise<ListWorktreesResult> {
+export async function listWorktrees(
+  repoRoot: string
+): Promise<ListWorktreesResult> {
   try {
     const proc = Bun.spawn(["git", "worktree", "list", "--porcelain"], {
       cwd: repoRoot,
@@ -253,7 +255,9 @@ function parseWorktreeOutput(output: string, repoRoot: string): WorktreeInfo[] {
       // Start of a new worktree block
       if (currentWorktree.path) {
         // Save the previous worktree
-        worktrees.push(finalizeWorktree(currentWorktree, repoRoot, isFirstWorktree));
+        worktrees.push(
+          finalizeWorktree(currentWorktree, repoRoot, isFirstWorktree)
+        );
         isFirstWorktree = false;
       }
       currentWorktree = {
@@ -276,7 +280,9 @@ function parseWorktreeOutput(output: string, repoRoot: string): WorktreeInfo[] {
 
   // Don't forget the last worktree
   if (currentWorktree.path) {
-    worktrees.push(finalizeWorktree(currentWorktree, repoRoot, isFirstWorktree));
+    worktrees.push(
+      finalizeWorktree(currentWorktree, repoRoot, isFirstWorktree)
+    );
   }
 
   return worktrees;

@@ -59,7 +59,7 @@ export function ConfirmModal({
   // Modal dimensions
   const modalWidth = 46;
   const modalHeight = 9;
-  
+
   // Center the modal
   const left = Math.floor((width - modalWidth) / 2);
   const top = Math.floor((height - modalHeight) / 2);
@@ -110,8 +110,12 @@ export function ConfirmModal({
             style={{
               border: true,
               borderStyle: "rounded",
-              borderColor: confirmActive ? theme.colors.primary : theme.colors.border,
-              backgroundColor: confirmActive ? theme.colors.surfaceHighlight : theme.colors.background,
+              borderColor: confirmActive
+                ? theme.colors.primary
+                : theme.colors.border,
+              backgroundColor: confirmActive
+                ? theme.colors.surfaceHighlight
+                : theme.colors.background,
               paddingLeft: 2,
               paddingRight: 2,
             }}
@@ -119,7 +123,9 @@ export function ConfirmModal({
             <text
               attributes={confirmActive ? TextAttributes.BOLD : undefined}
               style={{
-                fg: confirmActive ? theme.colors.text.primary : theme.colors.text.muted,
+                fg: confirmActive
+                  ? theme.colors.text.primary
+                  : theme.colors.text.muted,
               }}
             >
               {confirmLabel}
@@ -129,8 +135,12 @@ export function ConfirmModal({
             style={{
               border: true,
               borderStyle: "rounded",
-              borderColor: cancelActive ? theme.colors.primary : theme.colors.border,
-              backgroundColor: cancelActive ? theme.colors.surfaceHighlight : theme.colors.background,
+              borderColor: cancelActive
+                ? theme.colors.primary
+                : theme.colors.border,
+              backgroundColor: cancelActive
+                ? theme.colors.surfaceHighlight
+                : theme.colors.background,
               paddingLeft: 2,
               paddingRight: 2,
             }}
@@ -138,7 +148,9 @@ export function ConfirmModal({
             <text
               attributes={cancelActive ? TextAttributes.BOLD : undefined}
               style={{
-                fg: cancelActive ? theme.colors.text.primary : theme.colors.text.muted,
+                fg: cancelActive
+                  ? theme.colors.text.primary
+                  : theme.colors.text.muted,
               }}
             >
               {cancelLabel}
@@ -146,7 +158,7 @@ export function ConfirmModal({
           </box>
         </box>
         <text style={{ fg: theme.colors.text.muted, marginTop: 1 }}>
-          ←/→ Select   Enter Confirm   Esc Cancel
+          ←/→ Select Enter Confirm Esc Cancel
         </text>
       </box>
     </>
