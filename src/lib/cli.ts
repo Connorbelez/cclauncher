@@ -21,6 +21,13 @@ export type CliCommand =
   | { type: "add"; model: Partial<Model> }
   | { type: "error"; message: string };
 
+/**
+ * Determine the package version for this application.
+ *
+ * Reads the package.json version for the running package and falls back to "0.0.0" if the file is missing, malformed, or cannot be read.
+ *
+ * @returns The package version string from package.json, or `"0.0.0"` if unavailable.
+ */
 function getPackageVersion(): string {
   try {
     const entryPath = process.argv[1];
@@ -75,7 +82,19 @@ For more information, visit: https://github.com/Connorbelez/cclauncher
 `.trim();
 
 /**
- * Parse command-line arguments into a CLI command.
+ * Parse an argv-style list of strings into a CliCommand describing the requested CLI action.
+ *
+ * Recognizes long flags (e.g., `--help`, `--version`, `--list`, `--add`, `--name`, `--description`,
+ * `--endpoint`, `--token`, `--model-id`, `--fast-model`, `--model`) and short flags `-h`, `-v`, `-l`.
+ * If `--add` is present, a `--name` value is required and a Partial<Model> is constructed from
+ * the provided name, description and ANTHROPIC_* flag values. If `--model <name>` is provided or
+ * a positional argument is present, the command will be a launch request for that model name.
+ * When no actionable flags or positional args are provided, the TUI command is returned.
+ *
+ * @param args - Command-line arguments (excluding node/script) to parse
+ * @returns The parsed CliCommand: `tui` for interactive launch, `help`, `version`, `list`,
+ *          `add` with a Partial<Model>` when adding a model, `launch` with a modelName when
+ *          launching a specific model, or `error` with a message for malformed flag usage.
  */
 export function parseArgs(args: string[]): CliCommand {
   if (args.length === 0) {
@@ -170,7 +189,10 @@ export function parseArgs(args: string[]): CliCommand {
 }
 
 /**
- * Execute a CLI command. Returns exit code.
+ * Execute a parsed CLI command and perform the associated action.
+ *
+ * @param command - The parsed CLI command to execute
+ * @returns An exit code: `-1` to indicate the caller should launch the TUI, `0` for success, `1` for a generic failure, or a model-launch-specific exit code returned by the launcher
  */
 export async function executeCommand(command: CliCommand): Promise<number> {
   switch (command.type) {

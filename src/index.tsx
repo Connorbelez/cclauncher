@@ -54,7 +54,14 @@ function selectOptionToModel(option: SelectOption & { order?: number }): Model {
   };
 }
 
-// Load models from store, with migration from in-source models.json
+/**
+ * Load model entries from the persistent store, migrating in-source models.json into the store if the store is empty.
+ *
+ * When the store is empty and in-source models exist, attempts to migrate those models into the store and logs the migrated count.
+ * If loading from the store fails, falls back to the in-source models.json.
+ *
+ * @returns An array of `SelectOption` objects (each may include an `order` field). When falling back to in-source models, the result is sorted by `order`.
+ */
 function loadModels(): (SelectOption & { order?: number })[] {
   // First, try to migrate in-source models if the store is empty
   const storeResult = getModelList();
@@ -180,6 +187,13 @@ const saveModel = (
   return { ok: true };
 };
 
+/**
+ * Render a dim status label that indicates the current UI mode.
+ *
+ * @param moveMode - Whether reorder/move mode is active
+ * @param launching - Whether an external launch is in progress
+ * @returns A text element showing `Mode: <label>` where `<label>` is one of `"Launching..."`, `"Move"`, `"Edit"`, or `"View"`, styled with a corresponding foreground color
+ */
 function ModeIndicator({
   moveMode,
   launching,
@@ -210,6 +224,12 @@ function ModeIndicator({
   );
 }
 
+/**
+ * Render the main CCLauncher TUI and coordinate model, worktree, and launch workflows.
+ *
+ * @param gitRepoRoot - Path to the Git repository root to enable worktree features; `null` disables Git integrations.
+ * @returns The root React element for the CLI text-based user interface.
+ */
 function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
   const [modelsState, setModelsState] =
     useState<(SelectOption & { order?: number })[]>(initialModels);

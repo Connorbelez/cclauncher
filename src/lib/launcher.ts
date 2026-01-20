@@ -40,8 +40,15 @@ export async function checkClaudeInstalled(): Promise<boolean> {
 }
 
 /**
- * Prepare environment variables for Claude Code from a model configuration.
- * Resolves env: references and only sets non-empty values.
+ * Build an environment variable map for launching Claude Code from a model configuration.
+ *
+ * Resolves any `env:` references in model values and sets only defined variables required by
+ * Claude Code (core settings, optional default models, API timeout, and a flag to disable
+ * nonessential traffic). Starts from the current process.env and overwrites values with those
+ * resolved from the provided model.
+ *
+ * @param model - Model configuration whose `value` fields supply environment settings and references
+ * @returns A record of environment variables to use when launching Claude Code
  */
 export function prepareEnvironment(model: Model): Record<string, string> {
   const env: Record<string, string> = { ...process.env } as Record<
@@ -101,8 +108,15 @@ export function prepareEnvironment(model: Model): Record<string, string> {
 }
 
 /**
- * Launch Claude Code with the given model configuration using bun-pty for proper TTY handling.
- * Falls back to Bun.spawn if bun-pty is unavailable.
+ * Launch Claude Code using the provided model configuration and a PTY when available.
+ *
+ * If bun-pty is unavailable or PTY launch fails, falls back to spawning the `claude`
+ * process with inherited stdio. The function prepares the environment and working
+ * directory before launching.
+ *
+ * @param model - Model configuration used to construct the environment for Claude Code
+ * @param options - Optional launch settings; supports `cwd` to override the working directory
+ * @returns `{ ok: true, exitCode: number }` when the process exits normally; `{ ok: false, reason: "not_found" | "spawn_failed" | "signal", message: string }` on failure
  */
 export async function launchClaudeCode(
   model: Model,
@@ -159,8 +173,10 @@ export async function launchClaudeCode(
 }
 
 /**
- * Launch Claude Code using bun-pty for proper PTY handling.
- * This gives the child process a real TTY with independent input buffering.
+ * Launch a Claude Code subprocess attached to a pseudo-terminal and proxy its stdin/stdout.
+ *
+ * @returns `ok: true` with `exitCode` when the child exits normally; `ok: false` with `reason: "signal"` and a `message` if the process was terminated by a signal.
+ * @throws If bun-pty is not available (pty spawn implementation missing)
  */
 async function launchWithPty(
   env: Record<string, string>,

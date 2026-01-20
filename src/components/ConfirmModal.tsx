@@ -13,6 +13,20 @@ type ConfirmModalProps = {
   onCancel: () => void;
 };
 
+/**
+ * Renders a centered confirmation modal with keyboard-accessible Confirm and Cancel actions.
+ *
+ * Shows a backdrop and a dialog with a title, message, and two buttons. Left/Right arrow keys switch focus between the Confirm and Cancel options; Enter triggers the currently selected action; Escape triggers cancel.
+ *
+ * @param isOpen - Whether the modal is visible.
+ * @param title - Dialog title text (defaults to "Confirm").
+ * @param message - Dialog message text (defaults to "Save changes?").
+ * @param confirmLabel - Label for the confirm button (defaults to "Save").
+ * @param cancelLabel - Label for the cancel button (defaults to "Cancel").
+ * @param onConfirm - Callback invoked when the user confirms.
+ * @param onCancel - Callback invoked when the user cancels.
+ * @returns The modal element when `isOpen` is true, otherwise `null`.
+ */
 export function ConfirmModal({
   isOpen,
   title = "Confirm",

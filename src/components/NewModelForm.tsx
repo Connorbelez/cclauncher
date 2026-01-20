@@ -23,6 +23,15 @@ const newModelSchema = z.object({
   }),
 });
 
+/**
+ * Renders an interactive "Create New Model" form with keyboard navigation, validation, and save/overwrite confirmation flows.
+ *
+ * The component manages form state for model identity and Anthropica API configuration, prevents accidental exit when changes are pending,
+ * validates input using the `newModelSchema`, and persists configurations via `saveModelToFile`. It also exposes keyboard shortcuts
+ * for field navigation, submit (Enter) and cancel (Esc), and shows inline error messages when validation or save fails.
+ *
+ * @returns The form UI for creating a new model, or `null` when the form is not focused.
+ */
 export function NewModelForm() {
   const {
     isFocused,

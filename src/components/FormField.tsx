@@ -15,6 +15,21 @@ interface FormFieldProps {
   width?: number | "auto" | `${number}%`;
 }
 
+/**
+ * Renders a labeled form field that supports read-only and edit modes, with optional password masking and keyboard clipboard handling.
+ *
+ * The field displays a label and either an editable input or a read-only value depending on `editMode`. When `isPassword` and `editMode` are true the input shows a masked value while tracking the real value via keyboard and clipboard events.
+ *
+ * @param label - Visible label for the field
+ * @param value - Current value of the field (source of truth)
+ * @param isFocused - When true, renders focus styling and enables keyboard handlers
+ * @param editMode - When true, renders an editable input; otherwise renders a read-only value view
+ * @param onChange - Optional change callback invoked with the new actual value when the user edits the field (including typed characters, backspace, or paste)
+ * @param placeholder - Placeholder text shown when the value is empty
+ * @param isPassword - When true, masks the displayed value and treats input specially to keep the actual value out of the visible UI
+ * @param width - CSS-like width for the component container (number, "auto", or percent string)
+ * @returns A JSX element representing the configured form field
+ */
 export function FormField({
   label,
   value,

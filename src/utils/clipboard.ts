@@ -17,6 +17,13 @@ const LINUX_READ: ClipboardCommand = {
   cmd: ["xclip", "-selection", "clipboard", "-o"],
 };
 
+/**
+ * Selects the appropriate read and write clipboard command objects for the current operating system.
+ *
+ * For "darwin" returns macOS commands, for "win32" returns Windows commands, otherwise returns Linux commands.
+ *
+ * @returns An object with `write` and `read` properties containing the clipboard command objects for the detected platform.
+ */
 function getCommands() {
   switch (process.platform) {
     case "darwin":
@@ -42,6 +49,11 @@ export async function writeClipboard(text: string): Promise<void> {
   }
 }
 
+/**
+ * Reads the system clipboard and returns its contents as text.
+ *
+ * @returns The clipboard contents with CRLF sequences converted to LF; returns an empty string if reading fails or no output is produced.
+ */
 export async function readClipboard(): Promise<string> {
   const { read } = getCommands();
   try {

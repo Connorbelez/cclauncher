@@ -13,8 +13,9 @@ export function resetKeyboardMode(): void {
 }
 
 /**
- * Reset terminal input state before spawning a child TUI.
- * Disables raw mode and common input protocols that can "stack" across apps.
+ * Prepare the current process terminal for spawning a child TUI by restoring input/output state and disabling terminal protocols that can persist across applications.
+ *
+ * Attempts to disable raw mode on stdin (when it is a TTY), writes escape sequences to stdout to reset attributes, show the cursor, exit the alternate buffer, pop the Kitty keyboard mode, and disable mouse tracking, focus events, and bracketed paste. Finally, when stdin is a TTY it attempts to run `stty sane`. All operations are best-effort; failures are ignored.
  */
 export function resetTerminalForChild(): void {
   if (process.stdin.isTTY) {

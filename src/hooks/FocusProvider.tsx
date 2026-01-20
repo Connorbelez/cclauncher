@@ -32,6 +32,15 @@ interface FocusContextType {
 
 const FocusContext = createContext<FocusContextType | undefined>(undefined);
 
+/**
+ * Supplies focus management, keyboard navigation, edit-mode and modal state, and per-item exit guards to descendant components via FocusContext.
+ *
+ * The provider tracks a registry of focusable IDs, manages the currently focused ID and edit mode, allows components to register/unregister themselves, and exposes APIs to set/clear exit guards that can intercept keyboard-driven focus changes.
+ *
+ * @param children - React nodes that will receive the focus context
+ * @param order - Initial focus order; the first item (if any) is used as the initial focused ID
+ * @returns A React element rendering the FocusContext provider wired with focus management state and APIs
+ */
 export function FocusProvider({
   children,
   order,

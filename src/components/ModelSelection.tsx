@@ -17,6 +17,21 @@ export type ModelSelectionProps = {
   isGitRepo?: boolean;
 };
 
+/**
+ * Render the model selection UI with keyboard-driven navigation, launching, deletion, and reordering.
+ *
+ * @param models - List of selectable model options shown in the control
+ * @param onSelect - Callback invoked with the selected model when user selects an item
+ * @param selectedModel - Currently selected model option
+ * @param onMove - Callback invoked to move a model: `(fromIndex, direction)` where `direction` is `"up"` or `"down"`
+ * @param onReorderEnd - Callback invoked when reordering mode is exited and changes should be committed
+ * @param moveMode - When `true`, the component is in reorder mode and arrow keys move the selected model
+ * @param onMoveModeChange - Callback invoked with the new `moveMode` value to toggle reorder mode
+ * @param onLaunch - Optional callback to launch a model: `(model, { useWorktree?: boolean })`
+ * @param onDelete - Optional callback invoked to delete the selected model
+ * @param isGitRepo - When `true`, enables the worktree launch flow and its keyboard shortcut
+ * @returns The rendered model selection element, or `null` when the component is not focused
+ */
 export function ModelSelection({
   models,
   onSelect,

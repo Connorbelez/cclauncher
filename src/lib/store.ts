@@ -71,7 +71,15 @@ function ensureStoreDir(): StoreResult<void> {
 }
 
 /**
- * Migrate from old array-based format to new key-value format.
+ * Convert legacy array-based model data into the new name-keyed ModelsJson structure.
+ *
+ * The migrated entries preserve the original array order (used for `order`), set
+ * `description` to "Migrated from v<version> format", and map legacy fields into
+ * the new model `value`. Fields that do not exist in the legacy item become
+ * empty strings or undefined where appropriate.
+ *
+ * @param oldData - Legacy payload containing an optional `version` and a `models` array of legacy model objects
+ * @returns A `ModelsJson` object mapping migrated model names to their new `Model` representation; returns an empty object if no models are present
  */
 function migrateOldFormat(oldData: {
   version?: number;
@@ -114,7 +122,9 @@ function migrateOldFormat(oldData: {
 }
 
 /**
- * Read all models from the store.
+ * Read and validate all models from the persistent store.
+ *
+ * @returns A StoreResult whose `data` is a map of model name to Model when successful; if the operation fails, `ok` is `false` and `reason` and `message` explain the error.
  */
 export function readModels(): StoreResult<ModelsJson> {
   const dirResult = ensureStoreDir();
@@ -255,7 +265,16 @@ export function getDefaultModel(): StoreResult<Model> {
 }
 
 /**
- * Save a model to the store.
+ * Store or update a model in the persistent models store.
+ *
+ * If `originalName` is provided and differs from `model.name`, the entry is renamed.
+ * If `model.order` is undefined, an order value is assigned after existing models.
+ * Duplicate names are rejected unless `allowOverwrite` is true.
+ *
+ * @param model - The model object to save
+ * @param options.originalName - Previous name when renaming a model
+ * @param options.allowOverwrite - If `true`, overwrite an existing model with the same name
+ * @returns `ok: true` on success; otherwise `ok: false` with `reason` set to `"read" | "write" | "validation" | "not_found" | "duplicate"` and a descriptive `message`
  */
 export function saveModel(
   model: Model,
@@ -356,7 +375,9 @@ export function setDefaultModel(name: string): StoreResult<void> {
 }
 
 /**
- * Get all models as a sorted array.
+ * Retrieve all stored models sorted by their `order` property in ascending order.
+ *
+ * @returns A StoreResult whose `data` is an array of models sorted by `order` ascending when `ok` is `true`; otherwise an error result indicating why the store could not be read.
  */
 export function getModelList(): StoreResult<Model[]> {
   const result = readModels();
@@ -376,7 +397,10 @@ export function getStorePath(): string {
 }
 
 /**
- * Migrate models from a source file (e.g., in-source models.json).
+ * Merge models from the provided source into the persistent store, adding any new entries.
+ *
+ * @param sourceModels - Map of model names to model objects to import into the store
+ * @returns An object with `migrated` equal to the number of models added and `skipped` equal to the number of models that already existed
  */
 export function migrateModels(
   sourceModels: ModelsJson

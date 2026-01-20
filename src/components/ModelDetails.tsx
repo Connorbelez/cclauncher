@@ -29,6 +29,13 @@ const editModelSchema = z.object({
   }),
 });
 
+/**
+ * Render an editable model details panel with validation, keyboard navigation, and a two-step save/overwrite flow.
+ *
+ * @param model - The model option to display and edit (initial field values are read from `model`).
+ * @param onSave - Callback invoked to persist changes. Called with the updated model, the original model name, and an options object `{ allowOverwrite?: boolean }`. Must return an object `{ ok: boolean; reason?: "validation" | "duplicate" | "read" | "write"; message?: string }` where `ok` indicates success; if a duplicate exists the callback should return `reason: "duplicate"`.
+ * @returns The React element that renders the model details editor, including input fields, validation error display, and confirmation modals.
+ */
 export function ModelDetails({ model, onSave }: ModelDetailsProps) {
   const {
     editMode,
