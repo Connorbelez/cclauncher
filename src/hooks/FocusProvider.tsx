@@ -61,14 +61,23 @@ export function FocusProvider({
 
 	const handleTab = useCallback(
 		(shift: boolean) => {
-			const index = registry.indexOf(focusedId || "");
+			const activeOrder = order.length > 0 ? order : registry;
+			const index = activeOrder.indexOf(focusedId || "");
+
+			// If current focused is not in the explicit order, jump to the first item
+			if (index === -1) {
+				if (activeOrder.length > 0) {
+					setFocusedId(activeOrder[0]);
+				}
+				return;
+			}
+
 			const nextIndex = shift
-				? (index - 1 + registry.length) % registry.length
-				: (index + 1) % registry.length;
-			setEditMode(!editMode);
-			setFocusedId(registry[nextIndex]);
+				? (index - 1 + activeOrder.length) % activeOrder.length
+				: (index + 1) % activeOrder.length;
+			setFocusedId(activeOrder[nextIndex]);
 		},
-		[registry, focusedId, editMode]
+		[registry, focusedId, order]
 	);
 
 	const handleKeyRegistry = useCallback(

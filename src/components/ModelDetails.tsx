@@ -306,12 +306,11 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 				ref={scrollboxRef}
 				style={{
 					width: "100%",
-					height: "80%",
+					flexGrow: 1,
 					border: true,
 					borderStyle: isActive ? "double" : "rounded",
 					borderColor,
 					rootOptions: { backgroundColor: theme.colors.surface },
-					wrapperOptions: { backgroundColor: theme.colors.surfaceHighlight },
 					viewportOptions: { backgroundColor: theme.colors.background },
 					contentOptions: { backgroundColor: theme.colors.background },
 					scrollbarOptions: {
@@ -467,16 +466,6 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 							value={anthropicDefaultHaikuModel}
 						/>
 					</box>
-
-					{/* Footer hints - only show in edit mode */}
-					{editMode && (
-						<box marginTop={1} paddingTop={1}>
-							<text style={{ fg: theme.colors.text.muted }}>
-								[Enter] Save [Esc] Cancel [Cmd+C / Ctrl+Shift+C] Copy [Cmd+V /
-								Ctrl+V] Paste
-							</text>
-						</box>
-					)}
 				</box>
 			</scrollbox>
 			<ConfirmModal

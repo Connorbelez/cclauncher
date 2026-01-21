@@ -1,15 +1,14 @@
-import {
-	createCliRenderer,
-	type SelectOption,
-	TextAttributes,
-} from "@opentui/core";
+import { createCliRenderer, type SelectOption } from "@opentui/core";
 import { createRoot, useRenderer } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GitWorktreeSelector } from "./components/GitWorktreeSelector";
+import { Header } from "./components/Header";
 import { ModelDetails } from "./components/ModelDetails";
 import { ModelSelection } from "./components/ModelSelection";
 import { NewModelForm } from "./components/NewModelForm";
+import { StatusBar } from "./components/StatusBar";
 import { FocusProvider, useFocusContext } from "./hooks/FocusProvider";
+import { useTerminalSize } from "./hooks/useTerminalSize";
 import { parseArgs, runCli } from "./lib/cli";
 import {
 	createDetachedWorktree,
@@ -30,7 +29,6 @@ import {
 	writeModels,
 } from "./lib/store";
 import modelsJson from "./models.json";
-import { theme } from "./theme";
 import { resetTerminalForChild } from "./utils/terminal";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -196,43 +194,6 @@ const saveModel = (
 
 	return { ok: true };
 };
-
-/**
- * Render a dim status label that indicates the current UI mode.
- *
- * @param moveMode - Whether reorder/move mode is active
- * @param launching - Whether an external launch is in progress
- * @returns A text element showing `Mode: <label>` where `<label>` is one of `"Launching..."`, `"Move"`, `"Edit"`, or `"View"`, styled with a corresponding foreground color
- */
-function ModeIndicator({
-	moveMode,
-	launching,
-}: {
-	moveMode: boolean;
-	launching: boolean;
-}) {
-	const { editMode } = useFocusContext();
-	const modeLabel = launching
-		? "Launching..."
-		: moveMode
-			? "Move"
-			: editMode
-				? "Edit"
-				: "View";
-	const modeColor = launching
-		? theme.colors.warning
-		: moveMode
-			? theme.colors.success
-			: editMode
-				? theme.colors.primary
-				: theme.colors.secondary;
-
-	return (
-		<text attributes={TextAttributes.DIM} style={{ fg: modeColor }}>
-			Mode: {modeLabel}
-		</text>
-	);
-}
 
 /**
  * Render the main CCLauncher TUI and coordinate model, worktree, and launch workflows.
@@ -573,20 +534,32 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		process.exit(result.exitCode);
 	}, [renderer, gitRepoRoot, selectedModel]);
 
+	const { columns } = useTerminalSize();
+	const isSmallScreen = columns < 100;
+
+	// Use conditional focus order? No, focus order remains the same logically.
+	const focusOrder = isGitRepo
+		? ["model_selection", "worktree_selection", "new_model"]
+		: ["model_selection", "new_model"];
+
 	return (
-		<FocusProvider order={["model_selection", "worktree_selection"]}>
-			<box alignItems="center" flexGrow={1} justifyContent="center">
-				<box alignItems="flex-end" justifyContent="center">
-					<ascii-font font="tiny" text="CCLauncher" />
-					<text attributes={TextAttributes.DIM}>What will you build?</text>
-				</box>
+		<FocusProvider order={focusOrder}>
+			<box
+				flexDirection="column"
+				flexGrow={1}
+				style={{ width: "100%", height: "100%" }}
+			>
+				{/* Header */}
+				<Header />
+
+				{/* Main Content Area */}
 				<box
-					alignItems="flex-start"
-					flexDirection="row"
+					alignItems={isSmallScreen ? "stretch" : "flex-start"}
+					flexDirection={isSmallScreen ? "column" : "row"}
+					flexGrow={1}
 					gap={1}
-					height="100%"
 					justifyContent="center"
-					width="100%"
+					style={{ width: "100%", paddingLeft: 1, paddingRight: 1 }}
 				>
 					<ModelSelection
 						isGitRepo={isGitRepo}
@@ -614,34 +587,43 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						/>
 					)}
 				</box>
-			</box>
-			<box
-				alignItems="flex-start"
-				flexDirection="row"
-				gap={1}
-				justifyContent="center"
-			>
-				<text attributes={TextAttributes.DIM}>[n] New</text>
-				<text attributes={TextAttributes.DIM}>·</text>
-				<text attributes={TextAttributes.DIM}>[e] Edit</text>
-				<text attributes={TextAttributes.DIM}>·</text>
-				<text attributes={TextAttributes.DIM}>[Enter] Launch</text>
-				{isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
-				{isGitRepo && (
-					<text attributes={TextAttributes.DIM}>[w] New Worktree</text>
-				)}
-				{isGitRepo && <text attributes={TextAttributes.DIM}>·</text>}
-				{isGitRepo && (
-					<text attributes={TextAttributes.DIM}>[g] Git Worktrees</text>
-				)}
-				<text attributes={TextAttributes.DIM}>·</text>
-				<text attributes={TextAttributes.DIM}>[↑↓] Navigate</text>
-				<text attributes={TextAttributes.DIM}>·</text>
-				<text attributes={TextAttributes.DIM}>[Esc] Exit Edit</text>
-				<text attributes={TextAttributes.DIM}>·</text>
-				<ModeIndicator launching={launching} moveMode={moveMode} />
+
+				{/* Status Bar */}
+				<StatusBarWrapper
+					isGitRepo={isGitRepo}
+					launching={launching}
+					moveMode={moveMode}
+				/>
 			</box>
 		</FocusProvider>
+	);
+}
+
+/**
+ * Wrapper component to access FocusContext for StatusBar.
+ */
+function StatusBarWrapper({
+	moveMode,
+	launching,
+	isGitRepo,
+}: {
+	moveMode: boolean;
+	launching: boolean;
+	isGitRepo: boolean;
+}) {
+	const { editMode, focusedId } = useFocusContext();
+	const { columns } = useTerminalSize();
+	const isSmallScreen = columns < 100;
+
+	return (
+		<StatusBar
+			editMode={editMode}
+			focusedId={focusedId}
+			isGitRepo={isGitRepo}
+			launching={launching}
+			moveMode={moveMode}
+			isSmallScreen={isSmallScreen}
+		/>
 	);
 }
 

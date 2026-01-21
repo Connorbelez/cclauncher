@@ -11,13 +11,20 @@ export const theme = {
 		warning: "#e0af68", // Warning/Caution indicators
 		text: {
 			primary: "#c0caf5", // Primary text
-			secondary: "#565f89", // Dimmed/secondary text
-			muted: "#414868", // Very dimmed text
+			secondary: "#a9b1d6", // Slightly dimmed secondary text
+			muted: "#565f89", // Very dimmed text
+			hint: "#414868", // Placeholder/hint text
 		},
 	},
 	borders: {
 		rounded: "rounded" as const,
 		double: "double" as const,
 		single: "single" as const,
+	},
+	spacing: {
+		xs: 1,
+		sm: 2,
+		md: 3,
+		lg: 4,
 	},
 };

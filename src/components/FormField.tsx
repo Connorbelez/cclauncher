@@ -157,6 +157,11 @@ export function FormField({
 		handlePasswordKeys(key);
 	});
 
+	// Compute display value for read-only mode
+	const displayValue = isPassword
+		? "••••••••"
+		: value || (placeholder ? `${placeholder}` : "—");
+
 	return (
 		<box flexDirection="column" style={{ width, marginBottom: 1 }}>
 			{editMode ? (
@@ -164,7 +169,7 @@ export function FormField({
 					<text
 						attributes={isFocused ? TextAttributes.BOLD : undefined}
 						style={{
-							fg: isFocused ? theme.colors.primary : theme.colors.secondary,
+							fg: isFocused ? theme.colors.primary : theme.colors.text.muted,
 						}}
 					>
 						{label}
@@ -172,11 +177,13 @@ export function FormField({
 					<box
 						style={{
 							border: true,
-							borderStyle: "rounded",
+							borderStyle: isFocused ? "double" : "rounded",
 							borderColor: isFocused
 								? theme.colors.primary
 								: theme.colors.border,
-							backgroundColor: theme.colors.background,
+							backgroundColor: isFocused
+								? theme.colors.surfaceHighlight
+								: theme.colors.background,
 							paddingLeft: 1,
 							paddingRight: 1,
 							height: 3, // Height includes border
@@ -188,7 +195,9 @@ export function FormField({
 							placeholder={placeholder}
 							style={{
 								textColor: theme.colors.text.primary,
-								backgroundColor: theme.colors.background, // Match container
+								backgroundColor: isFocused
+									? theme.colors.surfaceHighlight
+									: theme.colors.background,
 							}}
 							value={isPassword ? maskedValue : value}
 						/>
@@ -199,15 +208,19 @@ export function FormField({
 					<box style={{ width: 18 }}>
 						<text
 							style={{
-								fg: theme.colors.secondary,
+								fg: theme.colors.text.muted,
 							}}
 						>
 							{label}
 						</text>
 					</box>
-					<box style={{ paddingLeft: 1 }}>
-						<text style={{ fg: theme.colors.text.primary }}>
-							{isPassword ? "********" : value || placeholder || "Not set"}
+					<box flexGrow={1} style={{ paddingLeft: 1 }}>
+						<text
+							style={{
+								fg: value ? theme.colors.text.primary : theme.colors.text.hint,
+							}}
+						>
+							{displayValue}
 						</text>
 					</box>
 				</box>

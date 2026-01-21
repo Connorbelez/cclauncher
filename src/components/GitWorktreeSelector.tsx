@@ -161,20 +161,19 @@ export function GitWorktreeSelector({
 	// Empty state: no worktrees at all (shouldn't happen - main always exists)
 	if (worktrees.length === 0) {
 		return (
-			<box flexDirection="column" style={{ width: "100%", height: "80%" }}>
+			<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
 				<scrollbox
 					style={{
 						width: "100%",
-						height: "100%",
+						flexGrow: 1,
 						border: true,
 						borderStyle: isActive ? "double" : "rounded",
 						borderColor,
 						rootOptions: { backgroundColor: theme.colors.surface },
-						wrapperOptions: { backgroundColor: theme.colors.surfaceHighlight },
 						viewportOptions: { backgroundColor: theme.colors.background },
 						contentOptions: { backgroundColor: theme.colors.background },
 					}}
-					title={`Git Worktrees · Model: ${selectedModelName}`}
+					title={`Worktrees · ${selectedModelName}`}
 				>
 					<box flexDirection="column" gap={1} padding={1}>
 						<text style={{ fg: theme.colors.text.secondary }}>
@@ -185,26 +184,20 @@ export function GitWorktreeSelector({
 						</text>
 					</box>
 				</scrollbox>
-				<box style={{ paddingLeft: 1, height: 1 }}>
-					<text style={{ fg: theme.colors.text.muted }}>
-						[n] New Worktree [g/Esc] Back
-					</text>
-				</box>
 			</box>
 		);
 	}
 
 	return (
-		<box flexDirection="column" style={{ width: "100%", height: "80%" }}>
+		<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
 			<scrollbox
 				style={{
 					width: "100%",
-					height: "100%",
+					flexGrow: 1,
 					border: true,
 					borderStyle: isActive ? "double" : "rounded",
 					borderColor,
 					rootOptions: { backgroundColor: theme.colors.surface },
-					wrapperOptions: { backgroundColor: theme.colors.surfaceHighlight },
 					viewportOptions: { backgroundColor: theme.colors.background },
 					contentOptions: { backgroundColor: theme.colors.background },
 					scrollbarOptions: {
@@ -215,7 +208,7 @@ export function GitWorktreeSelector({
 						},
 					},
 				}}
-				title={`Git Worktrees (${worktrees.length}) · Model: ${selectedModelName}`}
+				title={`Worktrees (${worktrees.length}) · ${selectedModelName}`}
 			>
 				<select
 					focused={isFocused}
@@ -242,14 +235,6 @@ export function GitWorktreeSelector({
 					}}
 				/>
 			</scrollbox>
-			{/* Keyboard hints */}
-			<box style={{ paddingLeft: 1, paddingTop: 0, height: 1 }}>
-				<text style={{ fg: theme.colors.text.muted }}>
-					{isActive
-						? "[Enter] Launch  [n] New Worktree  [r] Refresh  [g/Esc] Back"
-						: "[Tab] Focus"}
-				</text>
-			</box>
 		</box>
 	);
 }
