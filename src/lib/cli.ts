@@ -10,6 +10,15 @@ import {
 	type Model,
 	saveModel,
 } from "./store";
+import {
+	getGitRepoRoot,
+	listWorktrees,
+	generateWorktreePath,
+	createDetachedWorktree,
+} from "./git";
+import { getProjectConfig, saveProjectConfig } from "./projectStore";
+import { launchExternalTerminal } from "../utils/terminalLauncher";
+import fs from "node:fs";
 
 export type CliCommand =
 	| { type: "tui" }
@@ -19,6 +28,16 @@ export type CliCommand =
 	| { type: "launch"; modelName: string }
 	| { type: "launch-default" }
 	| { type: "add"; model: Partial<Model> }
+	| { type: "worktree"; modelName?: string }
+	| { type: "worktree-list" }
+	| { type: "project-config-show" }
+	| {
+			type: "project-config-set";
+			scriptPath?: string;
+			spawnInTerminal?: boolean;
+			terminalApp?: string;
+	  }
+	| { type: "run-script" }
 	| { type: "error"; message: string };
 
 /**
@@ -54,10 +73,20 @@ USAGE:
 COMMANDS:
   (no command)        Launch the TUI for interactive model selection
   --model <name>      Launch Claude Code with the specified model
-  --list              List all configured models
-  --add               Add a new model (use with other flags)
-  --help              Show this help message
-  --version           Show version information
+  --list               List all configured models
+  --add                Add a new model (use with other flags)
+  --worktree, -w       Create a new worktree and launch Claude Code in it
+  --worktree-list      List all active worktrees
+  --project-config     Manage project settings
+  --run-script         Run the configured setup script in the current directory
+  --help               Show this help message
+  --version            Show version information
+
+OPTIONS FOR --project-config:
+  --show               Show current project configuration
+  --set-script <path>  Set the post-worktree setup script
+  --spawn-in-terminal <true|false> Run script in a separate terminal
+  --terminal-app <path|name> Specific terminal app to use
 
 OPTIONS FOR --add:
   --name <name>       Model name (required)
@@ -103,7 +132,19 @@ function handleLongFlag(
 	flags: Map<string, string>
 ): number {
 	const key = arg.slice(2);
-	if (["help", "list", "version", "add"].includes(key)) {
+	if (
+		[
+			"help",
+			"list",
+			"version",
+			"add",
+			"worktree",
+			"worktree-list",
+			"project-config",
+			"show",
+			"run-script",
+		].includes(key)
+	) {
 		flags.set(key, "true");
 		return 0;
 	}
@@ -126,6 +167,7 @@ function handleShortFlag(arg: string, flags: Map<string, string>): void {
 	if (key === "h") flags.set("help", "true");
 	else if (key === "v") flags.set("version", "true");
 	else if (key === "l") flags.set("list", "true");
+	else if (key === "w") flags.set("worktree", "true");
 }
 
 function collectFlagsAndPositional(args: string[]): {
@@ -157,6 +199,34 @@ function constructCommand(
 	if (flags.has("help")) return { type: "help" };
 	if (flags.has("version")) return { type: "version" };
 	if (flags.has("list")) return { type: "list" };
+	if (flags.has("worktree-list")) return { type: "worktree-list" };
+	if (flags.has("run-script")) return { type: "run-script" };
+
+	if (flags.has("project-config")) {
+		if (
+			flags.has("set-script") ||
+			flags.has("spawn-in-terminal") ||
+			flags.has("terminal-app")
+		) {
+			return {
+				type: "project-config-set",
+				scriptPath: flags.get("set-script"),
+				spawnInTerminal: flags.has("spawn-in-terminal")
+					? flags.get("spawn-in-terminal") === "true"
+					: undefined,
+				terminalApp: flags.get("terminal-app"),
+			};
+		}
+		return { type: "project-config-show" };
+	}
+
+	if (flags.has("worktree")) {
+		const modelName = flags.get("model") || positional[0];
+		return {
+			type: "worktree",
+			modelName: modelName && modelName !== "true" ? modelName : undefined,
+		};
+	}
 
 	if (flags.has("add")) {
 		const name = flags.get("name");
@@ -243,6 +313,224 @@ function handleListCommand(): number {
 	return 0;
 }
 
+async function handleListWorktreesCommand(): Promise<number> {
+	const repoRoot = await getGitRepoRoot();
+	if (!repoRoot) {
+		console.error("Error: Not in a git repository.");
+		return 1;
+	}
+
+	const result = await listWorktrees(repoRoot);
+	if (!result.ok) {
+		console.error(`Error: ${result.message}`);
+		return 1;
+	}
+
+	if (result.worktrees.length === 0) {
+		console.log("No active worktrees.");
+		return 0;
+	}
+
+	console.log("Active worktrees:\n");
+	for (const wt of result.worktrees) {
+		const mainMarker = wt.isMain ? " (main)" : "";
+		const detachedMarker = wt.isDetached ? " (detached)" : "";
+		const branchInfo = wt.branch ? ` [${wt.branch}]` : "";
+		console.log(
+			`  ${wt.relativePath || "."}${mainMarker}${detachedMarker}${branchInfo}`
+		);
+		console.log(`    Path: ${wt.path}`);
+		console.log(`    HEAD: ${wt.headShort}`);
+		if (wt.diffStats) {
+			console.log(
+				`    Changes: +${wt.diffStats.additions} -${wt.diffStats.deletions}`
+			);
+		}
+		console.log();
+	}
+
+	return 0;
+}
+
+async function runSetupScript(
+	worktreePath: string,
+	scriptPath: string,
+	spawnInTerminal = false,
+	terminalApp?: string
+): Promise<boolean> {
+	const absoluteScriptPath = path.resolve(worktreePath, scriptPath);
+	if (!fs.existsSync(absoluteScriptPath)) {
+		console.error(`Error: Setup script not found at ${absoluteScriptPath}`);
+		return false;
+	}
+
+	console.log(`Running setup script: ${scriptPath}`);
+
+	if (spawnInTerminal) {
+		const success = await launchExternalTerminal(
+			worktreePath,
+			scriptPath,
+			terminalApp
+		);
+		if (!success) {
+			console.error("Error launching external terminal.");
+			return false;
+		}
+		console.log("Waiting for external setup script to complete...");
+
+		// Poll for marker file
+		const markerFile = path.join(worktreePath, ".cclauncher_setup_done");
+		return new Promise((resolve) => {
+			const interval = setInterval(() => {
+				if (fs.existsSync(markerFile)) {
+					clearInterval(interval);
+					fs.unlinkSync(markerFile); // Clean up
+					resolve(true);
+				}
+			}, 1000);
+		});
+	}
+
+	try {
+		const proc = Bun.spawn(["bash", scriptPath], {
+			cwd: worktreePath,
+			stdout: "inherit",
+			stderr: "inherit",
+		});
+		const exitCode = await proc.exited;
+		return exitCode === 0;
+	} catch (err) {
+		console.error(
+			`Error running setup script: ${err instanceof Error ? err.message : String(err)}`
+		);
+		return false;
+	}
+}
+
+async function handleCreateWorktreeCommand(
+	modelName?: string
+): Promise<number> {
+	const modelResult = modelName ? getModel(modelName) : getDefaultModel();
+	if (!modelResult.ok) {
+		console.error(`Error: ${modelResult.message}`);
+		return 1;
+	}
+
+	const repoRoot = await getGitRepoRoot();
+	if (!repoRoot) {
+		console.error("Error: Not in a git repository.");
+		return 1;
+	}
+
+	const worktreePath = generateWorktreePath(repoRoot);
+	console.log(`Creating worktree at: ${worktreePath}`);
+
+	const wtResult = await createDetachedWorktree(repoRoot, worktreePath);
+	if (!wtResult.ok) {
+		console.error(`Error: ${wtResult.message}`);
+		return 1;
+	}
+
+	const configResult = getProjectConfig(repoRoot);
+	const projectConfig = configResult.ok ? configResult.data : null;
+
+	if (projectConfig?.postWorktreeScript) {
+		const success = await runSetupScript(
+			worktreePath,
+			projectConfig.postWorktreeScript,
+			projectConfig.spawnInTerminal,
+			projectConfig.terminalApp || undefined
+		);
+		if (!success) {
+			console.error("Setup script failed.");
+			// Optionally we could still launch CC, but let's be safe
+			return 1;
+		}
+	}
+
+	console.log(
+		`Launching Claude Code in worktree with model: ${modelResult.data.name}`
+	);
+	const launchResult = await launchClaudeCode(modelResult.data, {
+		cwd: worktreePath,
+	});
+	if (!launchResult.ok) {
+		console.error(`\nError: ${launchResult.message}`);
+		return 1;
+	}
+
+	return launchResult.exitCode;
+}
+
+function handleShowProjectConfig(): number {
+	const repoRoot = process.cwd(); // Assume current dir for project config
+	const result = getProjectConfig(repoRoot);
+
+	if (!result.ok) {
+		console.error(`Error reading project config: ${result.message}`);
+		return 1;
+	}
+
+	const config = result.data;
+	console.log(`Project Configuration for ${repoRoot}:`);
+	console.log(`  Setup Script: ${config?.postWorktreeScript || "(none)"}`);
+	console.log(`  Spawn in Terminal: ${config?.spawnInTerminal ?? false}`);
+	console.log(`  Terminal App: ${config?.terminalApp || "Auto-detect"}`);
+	return 0;
+}
+
+function handleSetProjectConfig(
+	scriptPath?: string,
+	spawnInTerminal?: boolean,
+	terminalApp?: string
+): number {
+	const repoRoot = process.cwd();
+	const result = getProjectConfig(repoRoot);
+
+	if (!result.ok) {
+		console.error(`Error reading project config: ${result.message}`);
+		return 1;
+	}
+
+	const config = result.data || {};
+	if (scriptPath !== undefined) config.postWorktreeScript = scriptPath;
+	if (spawnInTerminal !== undefined) config.spawnInTerminal = spawnInTerminal;
+	if (terminalApp !== undefined) config.terminalApp = terminalApp;
+
+	const saveResult = saveProjectConfig(repoRoot, config);
+
+	if (saveResult.ok) {
+		console.log("Successfully updated project configuration.");
+		return 0;
+	}
+	console.error(`Failed to save project config: ${saveResult.message}`);
+	return 1;
+}
+
+async function handleRunScript(): Promise<number> {
+	const repoRoot = process.cwd();
+	const result = getProjectConfig(repoRoot);
+
+	if (!result.ok) {
+		console.error(`Error reading project config: ${result.message}`);
+		return 1;
+	}
+
+	const config = result.data;
+	if (!config?.postWorktreeScript) {
+		console.error("Error: No setup script configured for this project.");
+		return 1;
+	}
+
+	const success = await runSetupScript(
+		repoRoot,
+		config.postWorktreeScript,
+		config.spawnInTerminal,
+		config.terminalApp || undefined
+	);
+	return success ? 0 : 1;
+}
+
 async function handleLaunchCommand(modelName: string): Promise<number> {
 	const result = getModel(modelName);
 	if (!result.ok) {
@@ -317,6 +605,20 @@ export async function executeCommand(command: CliCommand): Promise<number> {
 			return await handleLaunchDefaultCommand();
 		case "add":
 			return handleAddCommand(command.model);
+		case "worktree":
+			return await handleCreateWorktreeCommand(command.modelName);
+		case "worktree-list":
+			return await handleListWorktreesCommand();
+		case "project-config-show":
+			return handleShowProjectConfig();
+		case "project-config-set":
+			return handleSetProjectConfig(
+				command.scriptPath,
+				command.spawnInTerminal,
+				command.terminalApp
+			);
+		case "run-script":
+			return await handleRunScript();
 		case "error":
 			console.error(`Error: ${command.message}`);
 			console.error(`\nUse 'claude-launch --help' for usage information.`);
