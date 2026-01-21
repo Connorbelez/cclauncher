@@ -1,9 +1,11 @@
 import type { SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import type { WorktreeInfo } from "@/lib/git";
+import { getProjectConfig } from "@/lib/projectStore";
 import { theme } from "@/theme";
+import { ProjectSettings, ProjectSettingsPreview } from "./ProjectSettings";
 
 export interface GitWorktreeSelectorProps {
 	worktrees: WorktreeInfo[];
@@ -14,7 +16,11 @@ export interface GitWorktreeSelectorProps {
 	onRefresh: () => void;
 	/** Name of the currently selected model (for display) */
 	selectedModelName: string;
+	/** Git repository root path */
+	gitRepoRoot: string;
 }
+
+type ViewMode = "worktrees" | "settings";
 
 /**
  * Format diff stats for display (e.g., "+5/-10" or "✓" for clean).
@@ -91,6 +97,7 @@ function truncatePath(path: string, maxLen: number): string {
  * @param onCreateNew - Callback invoked to create a new worktree.
  * @param onRefresh - Callback invoked to refresh the worktree list.
  * @param selectedModelName - Human-readable model name shown in the selector title.
+ * @param gitRepoRoot - Git repository root path for project settings.
  * @returns The rendered worktree selector UI, or `null` when the component is not focused for worktree selection.
  */
 export function GitWorktreeSelector({
@@ -101,9 +108,27 @@ export function GitWorktreeSelector({
 	onCreateNew,
 	onRefresh,
 	selectedModelName,
+	gitRepoRoot,
 }: GitWorktreeSelectorProps) {
 	const { isFocused, focusedId, setFocusedId } =
 		useFocusState("worktree_selection");
+
+	const [viewMode, setViewMode] = useState<ViewMode>("worktrees");
+	const [hasSetupScript, setHasSetupScript] = useState(false);
+
+	// Check if project has a setup script configured
+	useEffect(() => {
+		const result = getProjectConfig(gitRepoRoot);
+		setHasSetupScript(Boolean(result.ok && result.data?.postWorktreeScript));
+	}, [gitRepoRoot]);
+
+	// Refresh setup script state when returning from settings
+	useEffect(() => {
+		if (viewMode === "worktrees") {
+			const result = getProjectConfig(gitRepoRoot);
+			setHasSetupScript(Boolean(result.ok && result.data?.postWorktreeScript));
+		}
+	}, [viewMode, gitRepoRoot]);
 
 	// Find the selected index
 	const selectedIndex = useMemo(() => {
@@ -120,8 +145,24 @@ export function GitWorktreeSelector({
 		[worktrees]
 	);
 
+	const handleSettingsSave = useCallback(() => {
+		setViewMode("worktrees");
+		// Refresh the hasSetupScript state
+		const result = getProjectConfig(gitRepoRoot);
+		setHasSetupScript(Boolean(result.ok && result.data?.postWorktreeScript));
+	}, [gitRepoRoot]);
+
+	const handleSettingsCancel = useCallback(() => {
+		setViewMode("worktrees");
+	}, []);
+
 	useKeyboard((key) => {
 		if (!isFocused) {
+			return;
+		}
+
+		// Settings mode handles its own keys
+		if (viewMode === "settings") {
 			return;
 		}
 
@@ -143,6 +184,12 @@ export function GitWorktreeSelector({
 			return;
 		}
 
+		// Open project settings
+		if (key.name === "s") {
+			setViewMode("settings");
+			return;
+		}
+
 		// Return to model selection
 		if (key.name === "g" || key.name === "escape") {
 			setFocusedId("model_selection");
@@ -153,6 +200,18 @@ export function GitWorktreeSelector({
 	// Only render when focused on worktree_selection
 	if (focusedId !== "worktree_selection") {
 		return null;
+	}
+
+	// Render settings view
+	if (viewMode === "settings") {
+		return (
+			<ProjectSettings
+				gitRepoRoot={gitRepoRoot}
+				isFocused={isFocused}
+				onCancel={handleSettingsCancel}
+				onSave={handleSettingsSave}
+			/>
+		);
 	}
 
 	const isActive = isFocused;
@@ -184,6 +243,7 @@ export function GitWorktreeSelector({
 						</text>
 					</box>
 				</scrollbox>
+				<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
 			</box>
 		);
 	}
@@ -208,7 +268,7 @@ export function GitWorktreeSelector({
 						},
 					},
 				}}
-				title={`Worktrees (${worktrees.length}) · ${selectedModelName}`}
+				title={`Worktrees (${worktrees.length}) · ${selectedModelName}${hasSetupScript ? " ⚡" : ""}`}
 			>
 				<select
 					focused={isFocused}
@@ -235,6 +295,11 @@ export function GitWorktreeSelector({
 					}}
 				/>
 			</scrollbox>
+
+			{/* Project settings preview */}
+			<box style={{ marginTop: 1 }}>
+				<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
+			</box>
 		</box>
 	);
 }

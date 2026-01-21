@@ -6,6 +6,7 @@ import { Header } from "./components/Header";
 import { ModelDetails } from "./components/ModelDetails";
 import { ModelSelection } from "./components/ModelSelection";
 import { NewModelForm } from "./components/NewModelForm";
+import { ScriptRunner } from "./components/ScriptRunner";
 import { StatusBar } from "./components/StatusBar";
 import { FocusProvider, useFocusContext } from "./hooks/FocusProvider";
 import { useTerminalSize } from "./hooks/useTerminalSize";
@@ -18,17 +19,16 @@ import {
 	type WorktreeInfo,
 } from "./lib/git";
 import { launchClaudeCode } from "./lib/launcher";
+import { getProjectConfig } from "./lib/projectStore";
 import {
 	deleteModel as deleteModelFromStore,
 	getModelList,
 	type Model,
 	type ModelsJson,
-	migrateModels,
 	modelSchema,
 	saveModel as saveModelToStore,
 	writeModels,
 } from "./lib/store";
-import modelsJson from "./models.json";
 import { resetTerminalForChild } from "./utils/terminal";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -51,63 +51,16 @@ function selectOptionToModel(option: SelectOption & { order?: number }): Model {
 	};
 }
 
-interface LegacyModel {
-	description?: string;
-	order?: number;
-	value?: Model["value"];
-}
-
 /**
- * Load model entries from the persistent store, migrating in-source models.json into the store if the store is empty.
+ * Load model entries from the persistent store (~/.claude-model-launcher/models.json).
  *
- * When the store is empty and in-source models exist, attempts to migrate those models into the store and logs the migrated count.
- * If loading from the store fails, falls back to the in-source models.json.
- *
- * @returns An array of `SelectOption` objects (each may include an `order` field). When falling back to in-source models, the result is sorted by `order`.
+ * @returns An array of `SelectOption` objects (each may include an `order` field), sorted by order.
  */
 function loadModels(): (SelectOption & { order?: number })[] {
-	// First, try to migrate in-source models if the store is empty
-	const storeResult = getModelList();
-
-	if (
-		storeResult.ok &&
-		storeResult.data.length === 0 &&
-		Object.keys(modelsJson).length > 0
-	) {
-		// Migrate from in-source models.json
-		const migrationSource: ModelsJson = {};
-		for (const [key, value] of Object.entries(modelsJson)) {
-			const legacyValue = value as unknown as LegacyModel;
-			migrationSource[key] = {
-				name: key,
-				description: legacyValue.description || "",
-				order: legacyValue.order,
-				value: (legacyValue.value as Model["value"]) || ({} as Model["value"]),
-			};
-		}
-		const migrateResult = migrateModels(migrationSource);
-		if (migrateResult.ok) {
-			console.log(`Migrated ${migrateResult.data.migrated} models to store.`);
-		}
-	}
-
-	// Load from store
 	const result = getModelList();
 	if (!result.ok) {
 		console.error(`Failed to load models: ${result.message}`);
-		// Fall back to in-source models
-		return Object.entries(modelsJson)
-			.map(([key, value]) => {
-				const legacyValue = value as unknown as LegacyModel;
-				return {
-					name: key,
-					description: legacyValue.description || "",
-					value:
-						(legacyValue.value as Model["value"]) || ({} as Model["value"]),
-					order: legacyValue.order,
-				};
-			})
-			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+		return [];
 	}
 
 	return result.data.map(modelToSelectOption);
@@ -218,6 +171,13 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 	const [selectedWorktree, setSelectedWorktree] = useState<WorktreeInfo | null>(
 		null
 	);
+	const [scriptRunnerState, setScriptRunnerState] = useState<{
+		active: boolean;
+		scriptPath: string;
+		worktreePath: string;
+		spawnInTerminal?: boolean;
+		terminalApp?: string;
+	} | null>(null);
 	const renderer = useRenderer();
 	const isGitRepo = gitRepoRoot !== null;
 
@@ -500,22 +460,39 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 			return;
 		}
 
-		setLaunching(true);
-		renderer.destroy();
-		resetTerminalForChild();
-
 		const worktreePath = generateWorktreePath(gitRepoRoot);
-		console.log(`\nCreating worktree at: ${worktreePath}`);
 
+		// Create the worktree first (this happens within the TUI)
 		const worktreeResult = await createDetachedWorktree(
 			gitRepoRoot,
 			worktreePath
 		);
 		if (!worktreeResult.ok) {
-			console.error(`\nError creating worktree: ${worktreeResult.message}`);
-			process.exit(1);
+			// Show error in TUI (could add an error state for this)
+			console.error(`Error creating worktree: ${worktreeResult.message}`);
+			return;
 		}
 
+		// Check if there's a post-worktree setup script configured
+		const projectConfig = getProjectConfig(gitRepoRoot);
+		if (projectConfig.ok && projectConfig.data?.postWorktreeScript) {
+			// Show the script runner UI
+			setScriptRunnerState({
+				active: true,
+				scriptPath: projectConfig.data.postWorktreeScript,
+				worktreePath: worktreeResult.path,
+				spawnInTerminal: projectConfig.data.spawnInTerminal,
+				terminalApp: projectConfig.data.terminalApp,
+			});
+			return;
+		}
+
+		// No script configured, launch directly
+		setLaunching(true);
+		renderer.destroy();
+		resetTerminalForChild();
+
+		console.log(`\nCreating worktree at: ${worktreePath}`);
 		console.log("Worktree created successfully.");
 		console.log(`Model: ${selectedModel.name}`);
 		console.log("");
@@ -534,6 +511,37 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		process.exit(result.exitCode);
 	}, [renderer, gitRepoRoot, selectedModel]);
 
+	// Handle script runner completion
+	const handleScriptComplete = useCallback(() => {
+		if (!scriptRunnerState) return;
+
+		setLaunching(true);
+		renderer.destroy();
+		resetTerminalForChild();
+
+		console.log(`\nWorktree: ${scriptRunnerState.worktreePath}`);
+		console.log(`Model: ${selectedModel.name}`);
+		console.log("");
+
+		const storeModel = selectOptionToModel(
+			selectedModel as SelectOption & { order?: number }
+		);
+		launchClaudeCode(storeModel, {
+			cwd: scriptRunnerState.worktreePath,
+		}).then((result) => {
+			if (!result.ok) {
+				console.error(`\nError: ${result.message}`);
+				process.exit(1);
+			}
+			process.exit(result.exitCode);
+		});
+	}, [renderer, scriptRunnerState, selectedModel]);
+
+	// Handle script runner abort
+	const handleScriptAbort = useCallback(() => {
+		setScriptRunnerState(null);
+	}, []);
+
 	const { columns } = useTerminalSize();
 	const isSmallScreen = columns < 100;
 
@@ -541,6 +549,30 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 	const focusOrder = isGitRepo
 		? ["model_selection", "worktree_selection", "new_model"]
 		: ["model_selection", "new_model"];
+
+	// Show script runner when active
+	if (scriptRunnerState?.active && gitRepoRoot) {
+		return (
+			<FocusProvider order={[]}>
+				<box
+					flexDirection="column"
+					flexGrow={1}
+					style={{ width: "100%", height: "100%", padding: 1 }}
+				>
+					<Header />
+					<ScriptRunner
+						onAbort={handleScriptAbort}
+						onComplete={handleScriptComplete}
+						projectPath={gitRepoRoot}
+						scriptPath={scriptRunnerState.scriptPath}
+						workingDirectory={scriptRunnerState.worktreePath}
+						spawnInTerminal={scriptRunnerState.spawnInTerminal}
+						terminalApp={scriptRunnerState.terminalApp}
+					/>
+				</box>
+			</FocusProvider>
+		);
+	}
 
 	return (
 		<FocusProvider order={focusOrder}>
@@ -575,8 +607,9 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 					/>
 					<ModelDetails model={selectedModel} onSave={saveModel} />
 					<NewModelForm />
-					{isGitRepo && (
+					{isGitRepo && gitRepoRoot && (
 						<GitWorktreeSelector
+							gitRepoRoot={gitRepoRoot}
 							onCreateNew={handleCreateWorktreeAndLaunch}
 							onLaunch={handleWorktreeLaunch}
 							onRefresh={loadWorktrees}
