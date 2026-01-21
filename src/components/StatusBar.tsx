@@ -11,6 +11,10 @@ export interface StatusBarProps {
 	isGitRepo: boolean;
 	/** The currently focused element ID */
 	focusedId?: string;
+	/** Whether multi-select mode is active */
+	multiSelectMode?: boolean;
+	/** Number of models selected in multi-select mode */
+	selectionCount?: number;
 }
 
 /** A single shortcut with key and description */
@@ -41,22 +45,28 @@ export function StatusBar({
 	isGitRepo,
 	focusedId,
 	isSmallScreen = false,
+	multiSelectMode = false,
+	selectionCount = 0,
 }: StatusBarProps & { isSmallScreen?: boolean }) {
 	// Determine current mode label and color
 	const modeLabel = launching
 		? "Launching..."
-		: moveMode
-			? "Move"
-			: editMode
-				? "Edit"
-				: "View";
+		: multiSelectMode
+			? `Select (${selectionCount})`
+			: moveMode
+				? "Move"
+				: editMode
+					? "Edit"
+					: "View";
 	const modeColor = launching
 		? theme.colors.warning
-		: moveMode
-			? theme.colors.success
-			: editMode
-				? theme.colors.primary
-				: theme.colors.secondary;
+		: multiSelectMode
+			? theme.colors.secondary
+			: moveMode
+				? theme.colors.success
+				: editMode
+					? theme.colors.primary
+					: theme.colors.secondary;
 
 	// Build shortcut hints based on current mode and focus
 	const shortcuts: Shortcut[] = [];
@@ -86,14 +96,28 @@ export function StatusBar({
 			{ key: "Tab", desc: "Switch" },
 			{ key: "↑↓", desc: "Navigate" },
 			{ key: "n", desc: "New Worktree" },
+			{ key: "m", desc: "Merge" },
 			{ key: "s", desc: "Settings" },
 			{ key: "r", desc: "Refresh" }
 		);
+	} else if (multiSelectMode) {
+		// Multi-select mode shortcuts
+		shortcuts.push(
+			{ key: "Space", desc: "Toggle" },
+			{ key: "a", desc: "All" },
+			{ key: "A", desc: "None" },
+			{ key: "↑↓", desc: "Navigate" }
+		);
+		if (selectionCount > 0) {
+			shortcuts.push({ key: "Enter", desc: `Launch ${selectionCount}` });
+		}
+		shortcuts.push({ key: "Esc", desc: "Cancel" });
 	} else {
 		// Default view mode (mostly for model_selection)
 		shortcuts.push(
 			{ key: "n", desc: "New" },
 			{ key: "e", desc: "Edit" },
+			{ key: "s", desc: "Multi" },
 			{ key: "Enter", desc: "Launch" }
 		);
 		if (isGitRepo) {
@@ -121,8 +145,8 @@ export function StatusBar({
 			{/* Shortcuts Section */}
 			<box
 				flexDirection="row"
-				gap={isSmallScreen ? 1 : 2}
 				flexWrap={isSmallScreen ? "wrap" : "no-wrap"}
+				gap={isSmallScreen ? 1 : 2}
 				style={{ maxWidth: isSmallScreen ? "100%" : undefined }}
 			>
 				{shortcuts.map((shortcut, idx) => (
@@ -135,8 +159,8 @@ export function StatusBar({
 
 			{/* Mode Indicator - Move to bottom right or bottom on small screens */}
 			<box
-				flexDirection="row"
 				alignSelf={isSmallScreen ? "flex-end" : "auto"}
+				flexDirection="row"
 				marginTop={isSmallScreen ? 1 : 0}
 			>
 				<text style={{ fg: theme.colors.text.muted }}>Mode: </text>

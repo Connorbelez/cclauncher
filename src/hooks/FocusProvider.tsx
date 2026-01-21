@@ -1,5 +1,6 @@
 import { useKeyboard } from "@opentui/react";
 import type React from "react";
+import { logDebug } from "@/lib/logger";
 import {
 	createContext,
 	useCallback,
@@ -26,6 +27,8 @@ interface FocusContextType {
 	setFocusedId: (id: string) => void;
 	isModalOpen: boolean;
 	setModalOpen: (isOpen: boolean) => void;
+	inPreLaunchDialog: boolean;
+	setInPreLaunchDialog: (isOpen: boolean) => void;
 	setExitGuard: (id: string, guard: (key: Key) => boolean) => void;
 	clearExitGuard: (id: string) => void;
 }
@@ -45,6 +48,7 @@ export function FocusProvider({
 	);
 	const [editMode, setEditMode] = useState(false);
 	const [isModalOpen, setModalOpen] = useState(false);
+	const [inPreLaunchDialog, setInPreLaunchDialog] = useState(false);
 	const exitGuards = useMemo(
 		() => new Map<string, (key: Key) => boolean>(),
 		[]
@@ -113,10 +117,24 @@ export function FocusProvider({
 				handleKeyRegistry(name);
 			}
 		},
-		[focusedId, isModalOpen, editMode, handleTab, handleKeyRegistry, exitGuards]
+		[
+			focusedId,
+			isModalOpen,
+			inPreLaunchDialog,
+			editMode,
+			handleTab,
+			handleKeyRegistry,
+			exitGuards,
+		]
 	);
 
 	useKeyboard(handleGlobalKeys);
+
+	// Wrap setModalOpen to log changes
+	const setModalOpenWrapper = useCallback((isOpen: boolean) => {
+		logDebug("FocusProvider setModalOpen", { isOpen });
+		setModalOpen(isOpen);
+	}, []);
 
 	const contextValue = useMemo(
 		() => ({
@@ -128,12 +146,23 @@ export function FocusProvider({
 			setEditMode,
 			setFocusedId,
 			isModalOpen,
-			setModalOpen,
+			setModalOpen: setModalOpenWrapper,
+			inPreLaunchDialog,
+			setInPreLaunchDialog,
 			setExitGuard: (id: string, guard: (key: Key) => boolean) =>
 				exitGuards.set(id, guard),
 			clearExitGuard: (id: string) => exitGuards.delete(id),
 		}),
-		[focusedId, register, unregister, editMode, isModalOpen, exitGuards]
+		[
+			focusedId,
+			register,
+			unregister,
+			editMode,
+			isModalOpen,
+			inPreLaunchDialog,
+			exitGuards,
+			setModalOpenWrapper,
+		]
 	);
 
 	return (
@@ -168,6 +197,8 @@ export const useFocusState = (id: string) => {
 		focusedId: context.focusedId,
 		isModalOpen: context.isModalOpen,
 		setModalOpen: context.setModalOpen,
+		inPreLaunchDialog: context.inPreLaunchDialog,
+		setInPreLaunchDialog: context.setInPreLaunchDialog,
 		setExitGuard: context.setExitGuard,
 		clearExitGuard: context.clearExitGuard,
 	};

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { logger } from "@/utils/logger";
 
 // Store location: ~/.claude-model-launcher/projects.json
 const DEFAULT_STORE_DIR = path.join(os.homedir(), ".claude-model-launcher");
@@ -134,8 +135,11 @@ export function writeProjectsStore(
 			if (fs.existsSync(tempPath)) {
 				fs.unlinkSync(tempPath);
 			}
-		} catch {
-			// Ignore cleanup errors
+		} catch (cleanupErr) {
+			logger.error(
+				`Failed to cleanup temp project store file ${tempPath}`,
+				cleanupErr
+			);
 		}
 		return {
 			ok: false,
@@ -187,9 +191,21 @@ export function saveProjectConfig(
 
 	const projects = readResult.data;
 
-	// If the config has a script, save it; otherwise remove the project entry
-	if (config.postWorktreeScript) {
-		projects[projectPath] = validation.data;
+	const normalizedConfig = { ...validation.data };
+	if (
+		normalizedConfig.postWorktreeScript !== undefined &&
+		!normalizedConfig.postWorktreeScript.trim()
+	) {
+		delete normalizedConfig.postWorktreeScript;
+	}
+
+	const hasConfigValues =
+		normalizedConfig.postWorktreeScript !== undefined ||
+		normalizedConfig.spawnInTerminal !== undefined ||
+		normalizedConfig.terminalApp !== undefined;
+
+	if (hasConfigValues) {
+		projects[projectPath] = normalizedConfig;
 	} else {
 		delete projects[projectPath];
 	}

@@ -3,8 +3,10 @@ import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import type { WorktreeInfo } from "@/lib/git";
+import { getDefaultBranch, mergeWorktreeIntoDefault } from "@/lib/git";
 import { getProjectConfig } from "@/lib/projectStore";
 import { theme } from "@/theme";
+import { ConfirmModal } from "./ConfirmModal";
 import { ProjectSettings, ProjectSettingsPreview } from "./ProjectSettings";
 
 export interface GitWorktreeSelectorProps {
@@ -54,19 +56,36 @@ function formatWorktreeOption(worktree: WorktreeInfo): SelectOption {
 	const leftPart = `${marker} ${branchDisplay}`;
 	const statsDisplay = formatDiffStats(worktree.diffStats);
 
+	// Add mergeability indicator
+	let mergeIcon = "";
+	if (worktree.isMergeable === true) {
+		mergeIcon = " ✓"; // Clean merge
+	} else if (worktree.isMergeable === false) {
+		mergeIcon = " ⚠️"; // Conflict
+	}
+	// Note: isMergeable is null/undefined for main branch or errors
+
+	const rightPart = `${statsDisplay}${mergeIcon}`;
+
 	// Pad to create right-aligned stats (assuming ~50 char width)
-	const totalWidth = 45;
+	const totalWidth = 48;
 	const paddingNeeded = Math.max(
 		1,
-		totalWidth - leftPart.length - statsDisplay.length
+		totalWidth - leftPart.length - rightPart.length
 	);
-	const name = statsDisplay
-		? `${leftPart}${" ".repeat(paddingNeeded)}${statsDisplay}`
+	const name = rightPart
+		? `${leftPart}${" ".repeat(paddingNeeded)}${rightPart}`
 		: leftPart;
+
+	// Build description line with base branch info
+	let extraInfo = "";
+	if (worktree.baseBranch) {
+		extraInfo = `base: ${worktree.baseBranch}  `;
+	}
 
 	return {
 		name,
-		description: `${pathDisplay}  ${worktree.headShort}`,
+		description: `${extraInfo}${pathDisplay}  ${worktree.headShort}`,
 		value: worktree,
 	};
 }
@@ -115,6 +134,18 @@ export function GitWorktreeSelector({
 
 	const [viewMode, setViewMode] = useState<ViewMode>("worktrees");
 	const [hasSetupScript, setHasSetupScript] = useState(false);
+	const [isMerging, setIsMerging] = useState(false);
+	const [showMergeModal, setShowMergeModal] = useState(false);
+	const [mergeStatus, setMergeStatus] = useState<{
+		ok: boolean;
+		message: string;
+	} | null>(null);
+	const [defaultBranch, setDefaultBranch] = useState("main");
+
+	// Fetch default branch once
+	useEffect(() => {
+		getDefaultBranch(gitRepoRoot).then(setDefaultBranch);
+	}, [gitRepoRoot]);
 
 	// Check if project has a setup script configured
 	useEffect(() => {
@@ -195,7 +226,43 @@ export function GitWorktreeSelector({
 			setFocusedId("model_selection");
 			return;
 		}
+
+		// Merge worktree
+		if (key.name === "m" && selectedWorktree && !selectedWorktree.isMain) {
+			if (selectedWorktree.isMergeable === false) {
+				// Don't allow merge if there are known conflicts
+				return;
+			}
+			setShowMergeModal(true);
+			return;
+		}
 	});
+
+	const handleConfirmMerge = useCallback(async () => {
+		if (!selectedWorktree) return;
+
+		setIsMerging(true);
+		setMergeStatus(null);
+
+		const result = await mergeWorktreeIntoDefault(
+			gitRepoRoot,
+			selectedWorktree.head,
+			defaultBranch
+		);
+
+		setIsMerging(false);
+		if (result.ok) {
+			setShowMergeModal(false);
+			onRefresh(); // Refresh the list to update stats
+		} else {
+			setMergeStatus({ ok: false, message: result.message });
+		}
+	}, [selectedWorktree, gitRepoRoot, defaultBranch, onRefresh]);
+
+	const handleCancelMerge = useCallback(() => {
+		setShowMergeModal(false);
+		setMergeStatus(null);
+	}, []);
 
 	// Only render when focused on worktree_selection
 	if (focusedId !== "worktree_selection") {
@@ -268,7 +335,7 @@ export function GitWorktreeSelector({
 						},
 					},
 				}}
-				title={`Worktrees (${worktrees.length}) · ${selectedModelName}${hasSetupScript ? " ⚡" : ""}`}
+				title={`Worktrees (${worktrees.length}) · ${selectedModelName}${hasSetupScript ? " ⚡" : ""}${selectedWorktree && !selectedWorktree.isMain && selectedWorktree.isMergeable !== false ? " [m] Merge" : ""}`}
 			>
 				<select
 					focused={isFocused}
@@ -300,6 +367,22 @@ export function GitWorktreeSelector({
 			<box style={{ marginTop: 1 }}>
 				<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
 			</box>
+
+			<ConfirmModal
+				cancelLabel="No, Cancel"
+				confirmLabel={
+					isMerging ? "Merging..." : mergeStatus ? "Try Again" : "Merge"
+				}
+				isOpen={showMergeModal}
+				message={
+					mergeStatus
+						? mergeStatus.message
+						: `This will merge the code from this worktree (${selectedWorktree?.headShort}) into ${defaultBranch}. Continue?`
+				}
+				onCancel={handleCancelMerge}
+				onConfirm={handleConfirmMerge}
+				title="Merge Worktree"
+			/>
 		</box>
 	);
 }

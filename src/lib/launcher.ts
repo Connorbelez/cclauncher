@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { resetTerminalForChild } from "../utils/terminal";
 import { type Model, resolveEnvRef } from "./store";
 
@@ -21,6 +24,76 @@ export type LaunchResult =
 export interface LaunchOptions {
 	/** Working directory to launch Claude Code in */
 	cwd?: string;
+}
+
+/** Permission mode for Claude Code session */
+export type PermissionMode = "default" | "plan" | "autoAccept" | "acceptEdits";
+
+/** Options for multi-model launch */
+export interface MultiLaunchOptions {
+	/** Initial prompt text to pass to Claude Code */
+	initialPrompt: string;
+	/** Permission mode for the Claude Code session */
+	permissionMode: PermissionMode;
+}
+
+/** Extended launch options with CLI argument support */
+export interface ExtendedLaunchOptions extends LaunchOptions {
+	/** CLI arguments to pass to claude command */
+	cliArgs?: string[];
+	/** Terminal app to use for launching (path or name) */
+	terminalApp?: string;
+}
+
+/**
+ * Build CLI arguments array from multi-launch options.
+ *
+ * Maps permission modes to appropriate CLI flags:
+ * - default: no flags
+ * - plan: --permission-mode plan
+ * - autoAccept: --dangerously-skip-permissions
+ * - acceptEdits: --permission-mode acceptEdits
+ *
+ * Security warning:
+ * - The `autoAccept` mode uses `--dangerously-skip-permissions`, which bypasses
+ *   all permission checks.
+ * - Do not use this mode with untrusted prompts, in untrusted directories, or
+ *   when launching multiple instances that may operate on untrusted content.
+ * - Only use `autoAccept` in fully trusted environments where you understand
+ *   and accept the risk of granting unrestricted access to your files and tools.
+ *
+ * @param options - Multi-launch options with prompt and permission mode
+ * @returns Array of CLI arguments to pass to claude command
+ */
+export function buildCliArgs(options: MultiLaunchOptions): string[] {
+	const args: string[] = [];
+
+	// Permission mode flags
+	switch (options.permissionMode) {
+		case "plan":
+			args.push("--permission-mode", "plan");
+			break;
+		case "autoAccept":
+			args.push("--dangerously-skip-permissions");
+			break;
+		case "acceptEdits":
+			args.push("--permission-mode", "acceptEdits");
+			break;
+		default:
+			// No flags for default mode
+			break;
+	}
+
+	// Initial prompt as positional argument (must come last)
+	if (options.initialPrompt.trim()) {
+		args.push(options.initialPrompt.trim());
+	}
+
+	return args;
+}
+
+function toShellSingleQuote(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -210,6 +283,164 @@ export async function launchClaudeCode(
 			ok: false,
 			reason: "spawn_failed",
 			message: `Failed to launch Claude Code: ${err instanceof Error ? err.message : String(err)}`,
+		};
+	}
+}
+
+/**
+ * Launch Claude Code in a separate terminal window.
+ *
+ * Creates a wrapper script that sets up the environment and runs Claude Code,
+ * then launches it in a new terminal window. This allows multiple Claude instances
+ * to run simultaneously, each in its own terminal.
+ *
+ * @param model - Model configuration used to construct the environment
+ * @param options - Extended launch options including CLI args and working directory
+ * @returns LaunchResult indicating if spawn was successful
+ */
+export async function launchClaudeCodeBackground(
+	model: Model,
+	options?: ExtendedLaunchOptions
+): Promise<LaunchResult> {
+	const cwd = options?.cwd ?? process.cwd();
+	const cliArgs = options?.cliArgs ?? [];
+	const terminalApp = options?.terminalApp || "Terminal";
+	const platform = os.platform();
+
+	// Verify Claude is installed
+	const isInstalled = await checkClaudeInstalled();
+	if (!isInstalled) {
+		return {
+			ok: false,
+			reason: "not_found",
+			message: "Claude Code is not installed or not in PATH.",
+		};
+	}
+
+	// Prepare environment variables
+	const env = prepareEnvironment(model);
+
+	// Build the claude command with arguments
+	const claudeCommand = ["claude", ...cliArgs]
+		.map((arg) => toShellSingleQuote(arg))
+		.join(" ");
+
+	const ensureLauncherDir = (basePath: string): string => {
+		const launcherDir = path.join(basePath, ".cclauncher");
+		if (!fs.existsSync(launcherDir)) {
+			fs.mkdirSync(launcherDir, { recursive: true });
+		}
+		return launcherDir;
+	};
+
+	// Create a wrapper script that sets environment and runs claude
+	const timestamp = Date.now();
+	const scriptName = `.cclauncher_${model.name.replace(/[^a-zA-Z0-9]/g, "_")}_${timestamp}.sh`;
+	const wrapperScriptPath = path.join(ensureLauncherDir(cwd), scriptName);
+
+	// Build environment export statements
+	const envExports = Object.entries(env)
+		.filter(
+			([key]) =>
+				key.startsWith("ANTHROPIC") ||
+				key.startsWith("CLAUDE") ||
+				key === "API_TIMEOUT_MS"
+		)
+		.map(
+			([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`
+		)
+		.join("\n");
+
+	const wrapperContent = `#!/bin/bash
+cd "${cwd}"
+
+# Set up environment for Claude Code
+${envExports}
+
+# Launch Claude Code
+echo "Starting Claude Code with model: ${model.name}"
+echo "Working directory: ${cwd}"
+echo "----------------------------------------"
+${claudeCommand}
+CLAUDE_EXIT=$?
+
+echo ""
+echo "----------------------------------------"
+echo "Claude Code exited with code $CLAUDE_EXIT"
+echo "Press any key to close this terminal..."
+read -n 1 -s -r < /dev/tty
+
+# Cleanup wrapper script on exit
+rm -f "${wrapperScriptPath}"
+
+exit $CLAUDE_EXIT
+`;
+
+	try {
+		// Write the wrapper script
+		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o755 });
+	} catch (err) {
+		return {
+			ok: false,
+			reason: "spawn_failed",
+			message: `Failed to create launch script: ${err instanceof Error ? err.message : String(err)}`,
+		};
+	}
+
+	// Launch in a new terminal window
+	if (platform === "darwin") {
+		try {
+			const proc = Bun.spawn(["open", "-a", terminalApp, wrapperScriptPath], {
+				stderr: "pipe",
+				stdout: "ignore",
+			});
+
+			const code = await proc.exited;
+			if (code !== 0) {
+				const stderr = await new Response(proc.stderr).text();
+				// Clean up script on failure (ignore errors - best effort)
+				try {
+					fs.unlinkSync(wrapperScriptPath);
+				} catch (_cleanupErr) {
+					// Ignore cleanup errors
+				}
+				return {
+					ok: false,
+					reason: "spawn_failed",
+					message: `Failed to open terminal: ${stderr}`,
+				};
+			}
+
+			return { ok: true, exitCode: 0 };
+		} catch (err) {
+			// Clean up script on error (ignore errors - best effort)
+			try {
+				fs.unlinkSync(wrapperScriptPath);
+			} catch (_cleanupErr) {
+				// Ignore cleanup errors
+			}
+			return {
+				ok: false,
+				reason: "spawn_failed",
+				message: `Failed to launch terminal: ${err instanceof Error ? err.message : String(err)}`,
+			};
+		}
+	} else {
+		// Linux/other - try common terminal emulators
+		// For now, fall back to basic spawn (won't work for multiple instances)
+		console.warn(
+			"Multi-instance launch not fully supported on this platform yet."
+		);
+		try {
+			fs.unlinkSync(wrapperScriptPath);
+		} catch (_cleanupErr) {
+			// Ignore cleanup errors
+		}
+		return {
+			ok: false,
+			reason: "spawn_failed",
+			message:
+				"Multi-instance terminal launch not supported on this platform yet.",
 		};
 	}
 }

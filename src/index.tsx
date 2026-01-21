@@ -6,6 +6,7 @@ import { Header } from "./components/Header";
 import { ModelDetails } from "./components/ModelDetails";
 import { ModelSelection } from "./components/ModelSelection";
 import { NewModelForm } from "./components/NewModelForm";
+import { PreLaunchDialog } from "./components/PreLaunchDialog";
 import { ScriptRunner } from "./components/ScriptRunner";
 import { StatusBar } from "./components/StatusBar";
 import { FocusProvider, useFocusContext } from "./hooks/FocusProvider";
@@ -14,11 +15,17 @@ import { parseArgs, runCli } from "./lib/cli";
 import {
 	createDetachedWorktree,
 	generateWorktreePath,
+	generateWorktreePathWithSuffix,
 	getGitRepoRoot,
 	listWorktrees,
 	type WorktreeInfo,
 } from "./lib/git";
-import { launchClaudeCode } from "./lib/launcher";
+import {
+	buildCliArgs,
+	launchClaudeCode,
+	launchClaudeCodeBackground,
+	type MultiLaunchOptions,
+} from "./lib/launcher";
 import { getProjectConfig } from "./lib/projectStore";
 import {
 	deleteModel as deleteModelFromStore,
@@ -178,6 +185,18 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		spawnInTerminal?: boolean;
 		terminalApp?: string;
 	} | null>(null);
+
+	// Multi-select state
+	const [multiSelectMode, setMultiSelectMode] = useState(false);
+	const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(
+		new Set()
+	);
+	const [showPreLaunchDialog, setShowPreLaunchDialog] = useState(false);
+	const [pendingLaunchModels, setPendingLaunchModels] = useState<
+		SelectOption[] | null
+	>(null);
+	const [pendingUseWorktree, setPendingUseWorktree] = useState(false);
+
 	const renderer = useRenderer();
 	const isGitRepo = gitRepoRoot !== null;
 
@@ -528,18 +547,169 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		);
 		launchClaudeCode(storeModel, {
 			cwd: scriptRunnerState.worktreePath,
-		}).then((result) => {
-			if (!result.ok) {
-				console.error(`\nError: ${result.message}`);
+		})
+			.then((result) => {
+				if (!result.ok) {
+					console.error(`\nError: ${result.message}`);
+					process.exit(1);
+				}
+				process.exit(result.exitCode);
+			})
+			.catch((error) => {
+				console.error("\nUnexpected error launching Claude Code:", error);
 				process.exit(1);
-			}
-			process.exit(result.exitCode);
-		});
+			});
 	}, [renderer, scriptRunnerState, selectedModel]);
 
 	// Handle script runner abort
 	const handleScriptAbort = useCallback(() => {
 		setScriptRunnerState(null);
+	}, []);
+
+	// Multi-select handlers
+	const handleToggleModelSelection = useCallback((modelName: string) => {
+		setSelectedModelIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(modelName)) {
+				next.delete(modelName);
+			} else {
+				next.add(modelName);
+			}
+			return next;
+		});
+	}, []);
+
+	const handleSelectAll = useCallback(() => {
+		setSelectedModelIds(new Set(modelsState.map((m) => m.name)));
+	}, [modelsState]);
+
+	const handleClearAllSelections = useCallback(() => {
+		setSelectedModelIds(new Set());
+	}, []);
+
+	const handleMultiSelectModeChange = useCallback((enabled: boolean) => {
+		setMultiSelectMode(enabled);
+		if (!enabled) {
+			setSelectedModelIds(new Set());
+		}
+	}, []);
+
+	// Opens the pre-launch dialog for multi-model launch
+	const handleMultiLaunchRequest = useCallback(
+		(models: SelectOption[], options?: { useWorktree?: boolean }) => {
+			setPendingLaunchModels(models);
+			setPendingUseWorktree(options?.useWorktree ?? false);
+			setShowPreLaunchDialog(true);
+		},
+		[]
+	);
+
+	// Execute multi-model launch
+	const executeMultiLaunch = useCallback(
+		async (options: MultiLaunchOptions & { terminalApp?: string }) => {
+			if (!pendingLaunchModels || pendingLaunchModels.length === 0) {
+				return;
+			}
+
+			setShowPreLaunchDialog(false);
+			setLaunching(true);
+
+			// Exit TUI before spawning Claude Code instances
+			renderer.destroy();
+			resetTerminalForChild();
+
+			const cliArgs = buildCliArgs(options);
+			const modelCount = pendingLaunchModels.length;
+
+			console.log(`\nLaunching ${modelCount} Claude Code instance(s)...`);
+			if (options.initialPrompt) {
+				console.log(`Initial prompt: "${options.initialPrompt}"`);
+			}
+			if (options.permissionMode !== "default") {
+				console.log(`Permission mode: ${options.permissionMode}`);
+			}
+			if (options.terminalApp) {
+				console.log(`Terminal: ${options.terminalApp}`);
+			}
+			console.log("");
+
+			// Create worktrees if needed and launch each instance
+			const launchResults: { model: string; ok: boolean; error?: string }[] =
+				[];
+
+			for (const model of pendingLaunchModels) {
+				let launchCwd: string | undefined;
+
+				// Create worktree if worktree mode is enabled
+				if (pendingUseWorktree && gitRepoRoot) {
+					const worktreePath = generateWorktreePathWithSuffix(
+						gitRepoRoot,
+						model.name
+					);
+					console.log(`Creating worktree for ${model.name}: ${worktreePath}`);
+					const worktreeResult = await createDetachedWorktree(
+						gitRepoRoot,
+						worktreePath
+					);
+					if (!worktreeResult.ok) {
+						console.error(
+							`  Error creating worktree: ${worktreeResult.message}`
+						);
+						launchResults.push({
+							model: model.name,
+							ok: false,
+							error: worktreeResult.message,
+						});
+						continue;
+					}
+					launchCwd = worktreeResult.path;
+				}
+
+				// Launch Claude Code in background
+				const storeModel = selectOptionToModel(
+					model as SelectOption & { order?: number }
+				);
+				console.log(
+					`Launching: ${model.name}${launchCwd ? ` in ${launchCwd}` : ""}`
+				);
+
+				const result = await launchClaudeCodeBackground(storeModel, {
+					cwd: launchCwd,
+					cliArgs,
+					terminalApp: options.terminalApp,
+				});
+
+				launchResults.push({
+					model: model.name,
+					ok: result.ok,
+					error: result.ok ? undefined : result.message,
+				});
+			}
+
+			// Report results
+			const successCount = launchResults.filter((r) => r.ok).length;
+			console.log(
+				`\nLaunched ${successCount}/${modelCount} instance(s) successfully.`
+			);
+
+			if (successCount < modelCount) {
+				const failures = launchResults.filter((r) => !r.ok);
+				for (const failure of failures) {
+					console.error(`  ${failure.model}: ${failure.error}`);
+				}
+			}
+
+			// Exit - processes run independently
+			process.exit(0);
+		},
+		[pendingLaunchModels, pendingUseWorktree, gitRepoRoot, renderer]
+	);
+
+	// Cancel multi-launch dialog
+	const handleMultiLaunchCancel = useCallback(() => {
+		setShowPreLaunchDialog(false);
+		setPendingLaunchModels(null);
+		setPendingUseWorktree(false);
 	}, []);
 
 	const { columns } = useTerminalSize();
@@ -565,9 +735,9 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						onComplete={handleScriptComplete}
 						projectPath={gitRepoRoot}
 						scriptPath={scriptRunnerState.scriptPath}
-						workingDirectory={scriptRunnerState.worktreePath}
 						spawnInTerminal={scriptRunnerState.spawnInTerminal}
 						terminalApp={scriptRunnerState.terminalApp}
+						workingDirectory={scriptRunnerState.worktreePath}
 					/>
 				</box>
 			</FocusProvider>
@@ -597,13 +767,20 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						isGitRepo={isGitRepo}
 						models={modelsState}
 						moveMode={moveMode}
+						multiSelectMode={multiSelectMode}
+						onClearAllSelections={handleClearAllSelections}
 						onDelete={handleDelete}
 						onLaunch={handleLaunch}
 						onMove={handleMoveModel}
 						onMoveModeChange={setMoveMode}
+						onMultiLaunch={handleMultiLaunchRequest}
+						onMultiSelectModeChange={handleMultiSelectModeChange}
 						onReorderEnd={handleReorderEnd}
 						onSelect={setSelectedModel}
+						onSelectAll={handleSelectAll}
+						onToggleModelSelection={handleToggleModelSelection}
 						selectedModel={selectedModel}
+						selectedModelIds={selectedModelIds}
 					/>
 					<ModelDetails model={selectedModel} onSave={saveModel} />
 					<NewModelForm />
@@ -626,9 +803,63 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 					isGitRepo={isGitRepo}
 					launching={launching}
 					moveMode={moveMode}
+					multiSelectMode={multiSelectMode}
+					selectionCount={selectedModelIds.size}
 				/>
+
+				{/* Pre-Launch Dialog for multi-model launch */}
+				{showPreLaunchDialog && pendingLaunchModels && (
+					<PreLaunchDialogWrapper
+						isOpen={showPreLaunchDialog}
+						onCancel={handleMultiLaunchCancel}
+						onLaunch={executeMultiLaunch}
+						selectedModels={pendingLaunchModels}
+						useWorktree={pendingUseWorktree}
+					/>
+				)}
 			</box>
 		</FocusProvider>
+	);
+}
+
+/**
+ * Wrapper for PreLaunchDialog that ensures modal state is reset on cancel.
+ */
+function PreLaunchDialogWrapper(props: {
+	isOpen: boolean;
+	selectedModels: SelectOption[];
+	useWorktree: boolean;
+	onLaunch: (options: MultiLaunchOptions & { terminalApp?: string }) => void;
+	onCancel: () => void;
+}) {
+	const { setModalOpen, setInPreLaunchDialog } = useFocusContext();
+	const onCancelRef = useRef(props.onCancel);
+	onCancelRef.current = props.onCancel;
+
+	// Ensure modal state is set on mount and reset on unmount
+	useEffect(() => {
+		setModalOpen(true);
+		setInPreLaunchDialog(true);
+		return () => {
+			setModalOpen(false);
+			setInPreLaunchDialog(false);
+		};
+	}, [setModalOpen, setInPreLaunchDialog]);
+
+	const handleCancel = useCallback(() => {
+		setModalOpen(false);
+		setInPreLaunchDialog(false);
+		onCancelRef.current();
+	}, [setModalOpen, setInPreLaunchDialog]);
+
+	return (
+		<PreLaunchDialog
+			isOpen={props.isOpen}
+			onCancel={handleCancel}
+			onLaunch={props.onLaunch}
+			selectedModels={props.selectedModels}
+			useWorktree={props.useWorktree}
+		/>
 	);
 }
 
@@ -639,10 +870,14 @@ function StatusBarWrapper({
 	moveMode,
 	launching,
 	isGitRepo,
+	multiSelectMode,
+	selectionCount,
 }: {
 	moveMode: boolean;
 	launching: boolean;
 	isGitRepo: boolean;
+	multiSelectMode?: boolean;
+	selectionCount?: number;
 }) {
 	const { editMode, focusedId } = useFocusContext();
 	const { columns } = useTerminalSize();
@@ -653,9 +888,11 @@ function StatusBarWrapper({
 			editMode={editMode}
 			focusedId={focusedId}
 			isGitRepo={isGitRepo}
+			isSmallScreen={isSmallScreen}
 			launching={launching}
 			moveMode={moveMode}
-			isSmallScreen={isSmallScreen}
+			multiSelectMode={multiSelectMode}
+			selectionCount={selectionCount}
 		/>
 	);
 }

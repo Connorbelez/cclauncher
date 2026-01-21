@@ -52,6 +52,44 @@ claude-launch --add --name mymodel \
   --model-id claude-opus-4-5-20251101
 ```
 
+### Git Worktrees
+
+Create a detached git worktree and launch Claude Code inside it:
+
+```bash
+claude-launch --worktree
+```
+
+Or with a specific model:
+
+```bash
+claude-launch --worktree mymodel
+```
+
+List active worktrees:
+
+```bash
+claude-launch --worktree-list
+```
+
+### Project Configuration
+
+Manage per-project settings like setup scripts:
+
+```bash
+# Show current project config
+claude-launch --project-config --show
+
+# Set a post-worktree setup script
+claude-launch --project-config --set-script ./setup.sh
+
+# Configure external terminal for scripts
+claude-launch --project-config --spawn-in-terminal true --terminal-app Warp
+
+# Run the setup script manually
+claude-launch --run-script
+```
+
 ## Configuration
 
 Models are stored in:

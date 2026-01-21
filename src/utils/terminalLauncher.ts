@@ -1,6 +1,8 @@
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
+import type { ScriptExecution } from "@/lib/scriptExecution";
+import { logger } from "./logger";
 
 export interface SystemTerminal {
 	name: string;
@@ -45,46 +47,69 @@ export function detectTerminals(): SystemTerminal[] {
  */
 export async function launchExternalTerminal(
 	cwd: string,
-	scriptPath: string,
+	script: ScriptExecution,
 	terminalAppPath?: string
 ): Promise<boolean> {
 	const platform = os.platform();
 
+	const ensureLauncherDir = (basePath: string): string => {
+		const launcherDir = path.join(basePath, ".cclauncher");
+		if (!fs.existsSync(launcherDir)) {
+			fs.mkdirSync(launcherDir, { recursive: true });
+		}
+		return launcherDir;
+	};
+
+	const launcherDir = ensureLauncherDir(cwd);
+
 	// Create a wrapper script that runs the user script and signals completion
-	const markerFile = path.join(cwd, ".cclauncher_setup_done");
-	const wrapperScriptPath = path.join(cwd, ".cclauncher_wrapper.sh");
+	const markerFile = path.join(launcherDir, "setup_done");
+	const wrapperScriptPath = path.join(launcherDir, "setup_wrapper.sh");
 
 	// Ensure marker is gone
 	if (fs.existsSync(markerFile)) {
 		try {
 			fs.unlinkSync(markerFile);
-		} catch {}
+		} catch (err) {
+			logger.error(`Failed to cleanup marker file ${markerFile}`, err);
+		}
 	}
 
+	const bashSingleQuote = (value: string): string =>
+		`'${value.replace(/'/g, `'\"'\"'`)}'`;
+	const resolvedScript =
+		script.kind === "file" ? script.resolvedPath : script.command;
+	const scriptLabel = script.raw || resolvedScript;
 	const wrapperContent = `#!/bin/bash
+SCRIPT_KIND=${bashSingleQuote(script.kind)}
+SCRIPT_VALUE=${bashSingleQuote(resolvedScript)}
+SCRIPT_LABEL=${bashSingleQuote(scriptLabel)}
 cd "${cwd}"
-echo "Running setup script: ${scriptPath}"
+echo "Running setup script: $SCRIPT_LABEL"
 echo "----------------------------------------"
-if [ -f "${scriptPath}" ]; then
-  # Sourcing allows env vars to be set, but executing might be safer/cleaner.
-  # Let's execute it.
-  "${scriptPath}"
-  EXIT_CODE=$?
+if [ "$SCRIPT_KIND" = "file" ]; then
+  if [ -f "$SCRIPT_VALUE" ]; then
+    # Execute the script file via bash to avoid relying on executable bits.
+    bash "$SCRIPT_VALUE"
+    EXIT_CODE=$?
+  else
+    echo "Setup script not found at $SCRIPT_VALUE"
+    EXIT_CODE=1
+  fi
 else
-  # If it's a command like "bun install", run it
-  ${scriptPath}
+  # If it's a command like "bun install", run it in a shell
+  bash -lc "$SCRIPT_VALUE"
   EXIT_CODE=$?
 fi
 echo "----------------------------------------"
 if [ $EXIT_CODE -eq 0 ]; then
   echo "Setup completed successfully."
-  touch "${markerFile}"
 else
   echo "Setup failed with exit code $EXIT_CODE."
-  # Do not touch marker file so TUI knows it didn't finish cleanly?
-  # Or maybe we want to allow manual continuation.
-  # For now, let's NOT touch the marker on failure, user has to override in TUI.
 fi
+
+# Always write a marker with the exit code so the caller can detect completion.
+echo "$EXIT_CODE" > "${markerFile}"
 
 # Keep window open
 echo
@@ -101,7 +126,6 @@ exit $EXIT_CODE
 
 	// Launch
 	if (platform === "darwin") {
-		const args = ["-a", terminalAppPath || "Terminal", wrapperScriptPath];
 		// If specific app not provided or just "Terminal", might default to Terminal.app
 		// "open -a Terminal script.sh" works.
 		// "open script.sh" opens in default editor or runner.
