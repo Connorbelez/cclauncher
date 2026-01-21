@@ -4,8 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SpinnerWithElapsed } from "./Spinner";
 import { resolveScriptPath } from "@/lib/projectStore";
 import { theme } from "@/theme";
+import path from "node:path";
+import fs from "node:fs";
 
-type ScriptState = "running" | "success" | "error" | "aborted";
+type ScriptState =
+	| "running"
+	| "success"
+	| "error"
+	| "aborted"
+	| "external_running";
 
 interface ScriptRunnerProps {
 	/** Relative or absolute path to the script */
@@ -18,6 +25,10 @@ interface ScriptRunnerProps {
 	onComplete: () => void;
 	/** Called when user chooses to abort (Escape on error) */
 	onAbort: () => void;
+	/** Whether to spawn in a separate terminal window */
+	spawnInTerminal?: boolean;
+	/** Optional terminal application name/path */
+	terminalApp?: string;
 }
 
 // Pre-compile regex for splitting lines
@@ -33,6 +44,8 @@ export function ScriptRunner({
 	workingDirectory,
 	onComplete,
 	onAbort,
+	spawnInTerminal,
+	terminalApp,
 }: ScriptRunnerProps) {
 	const [state, setState] = useState<ScriptState>("running");
 	const [exitCode, setExitCode] = useState<number | null>(null);
@@ -40,78 +53,120 @@ export function ScriptRunner({
 	const [successDelay, setSuccessDelay] = useState(false);
 	const [output, setOutput] = useState<string[]>([]);
 	const procRef = useRef<ReturnType<typeof Bun.spawn> | null>(null);
+	const watcherRef = useRef<Timer | null>(null);
+
+	const hasRunRef = useRef(false);
 
 	const absoluteScriptPath = resolveScriptPath(projectPath, scriptPath);
 
 	// Run the script on mount
 	useEffect(() => {
+		if (hasRunRef.current) return;
+		hasRunRef.current = true;
+
 		let isCancelled = false;
 
 		const runScript = async () => {
-			try {
-				// We wrap the script in "sh -c" to ensure it executes correctly
-				// and force PTY-like behavior for output if possible, but for now
-				// simple pipe is enough to capture output.
-				const proc = Bun.spawn(["sh", "-c", absoluteScriptPath], {
-					cwd: workingDirectory,
-					stdio: ["ignore", "pipe", "pipe"],
-					env: { ...process.env, FORCE_COLOR: "1" },
-				});
+			if (spawnInTerminal) {
+				setState("external_running");
 
-				procRef.current = proc;
+				// Import dynamically to avoid loading OS-specific stuff unnecessarily
+				const { launchExternalTerminal } = await import(
+					"@/utils/terminalLauncher"
+				);
 
-				// Stream stdout
-				const readStream = async (stream: ReadableStream | null) => {
-					if (!stream) return;
-					const reader = stream.getReader();
-					const decoder = new TextDecoder();
+				const success = await launchExternalTerminal(
+					workingDirectory,
+					absoluteScriptPath,
+					terminalApp
+				);
 
-					try {
-						while (true) {
-							const { done, value } = await reader.read();
-							if (done) break;
-							const text = decoder.decode(value);
-							const lines = text.split(LINE_SPLIT_REGEX);
-
-							// Handle partial lines? For simplicity, we just push chunks or split by newline.
-							// To keep it simple in TUI, let's just push lines that have content
-							// or accumulate a buffer. For now, simple split is okay.
-							// We'll filter out empty strings to avoid gap spam.
-							const validLines = lines.filter((l) => l.length > 0);
-
-							setOutput((prev) => {
-								const next = [...prev, ...validLines];
-								// Keep last 100 lines
-								if (next.length > 100) return next.slice(-100);
-								return next;
-							});
-						}
-					} catch {
-						// Ignore stream errors
+				if (!success) {
+					if (!isCancelled) {
+						setState("error");
+						setOutput((p) => [...p, "Failed to launch external terminal."]);
 					}
-				};
-
-				// Start reading streams without awaiting them (fire and forget)
-				readStream(proc.stdout);
-				readStream(proc.stderr);
-
-				const code = await proc.exited;
-
-				if (isCancelled) return;
-
-				setExitCode(code);
-				if (code === 0) {
-					setState("success");
-					setSuccessDelay(true);
-				} else {
-					setState("error");
+					return;
 				}
-			} catch {
-				if (isCancelled) return;
-				setExitCode(-1);
-				setState("error");
-			} finally {
-				procRef.current = null;
+
+				// Start polling for completion marker
+				const markerFile = path.join(
+					workingDirectory,
+					".cclauncher_setup_done"
+				);
+
+				// Poll every 500ms
+				watcherRef.current = setInterval(() => {
+					if (fs.existsSync(markerFile)) {
+						if (watcherRef.current) clearInterval(watcherRef.current);
+
+						// Cleanup marker
+						try {
+							fs.unlinkSync(markerFile);
+						} catch {}
+
+						if (!isCancelled) {
+							setState("success");
+							setSuccessDelay(true);
+						}
+					}
+				}, 500);
+			} else {
+				// Internal execution (existing logic)
+				try {
+					const proc = Bun.spawn(["sh", "-c", absoluteScriptPath], {
+						cwd: workingDirectory,
+						stdio: ["ignore", "pipe", "pipe"],
+						env: { ...process.env, FORCE_COLOR: "1" },
+					});
+
+					procRef.current = proc;
+
+					const readStream = async (stream: ReadableStream | null) => {
+						if (!stream) return;
+						const reader = stream.getReader();
+						const decoder = new TextDecoder();
+
+						try {
+							while (true) {
+								const { done, value } = await reader.read();
+								if (done) break;
+								const text = decoder.decode(value);
+								const lines = text.split(LINE_SPLIT_REGEX);
+								const validLines = lines.filter((l) => l.length > 0);
+
+								setOutput((prev) => {
+									const next = [...prev, ...validLines];
+									if (next.length > 100) return next.slice(-100);
+									return next;
+								});
+							}
+						} catch {
+							// Ignore stream errors
+						}
+					};
+
+					readStream(proc.stdout);
+					readStream(proc.stderr);
+
+					const code = await proc.exited;
+
+					if (isCancelled) return;
+
+					setExitCode(code);
+					if (code === 0) {
+						setState("success");
+						setSuccessDelay(true);
+					} else {
+						setState("error");
+					}
+				} catch {
+					if (isCancelled) return;
+					setExitCode(-1);
+					setState("error");
+				} finally {
+					procRef.current = null;
+				}
 			}
 		};
 
@@ -119,12 +174,14 @@ export function ScriptRunner({
 
 		return () => {
 			isCancelled = true;
-			// Kill process on unmount if valid
 			if (procRef.current) {
 				procRef.current.kill();
 			}
+			if (watcherRef.current) {
+				clearInterval(watcherRef.current);
+			}
 		};
-	}, [absoluteScriptPath, workingDirectory]);
+	}, [absoluteScriptPath, workingDirectory, spawnInTerminal, terminalApp]);
 
 	// Auto-proceed after success delay
 	useEffect(() => {
@@ -140,25 +197,23 @@ export function ScriptRunner({
 	const handleKeyboard = useCallback(
 		(key: { name?: string }) => {
 			if (key.name === "escape") {
-				if (state === "running") {
-					// User wants to cancel running script
+				if (state === "running" || state === "external_running") {
+					// User wants to cancel
 					if (procRef.current) {
 						procRef.current.kill();
 					}
 					setState("aborted");
 				} else {
-					// In success/error/aborted state, escape means go back/abort
 					onAbort();
 				}
 				return;
 			}
 
-			if (
-				(key.name === "return" || key.name === "space") &&
-				state !== "running"
-			) {
-				// In error/success states, enter means continue
-				onComplete();
+			if (key.name === "return" || key.name === "space") {
+				// Allow manual continuation for external scripts too
+				if (state !== "running") {
+					onComplete();
+				}
 			}
 		},
 		[state, onAbort, onComplete]
@@ -167,7 +222,7 @@ export function ScriptRunner({
 	useKeyboard(handleKeyboard);
 
 	const borderColor =
-		state === "running"
+		state === "running" || state === "external_running"
 			? theme.colors.primary
 			: state === "success"
 				? theme.colors.success
@@ -200,11 +255,13 @@ export function ScriptRunner({
 				title={
 					state === "running"
 						? "Running Setup Script"
-						: state === "success"
-							? "Setup Complete"
-							: state === "aborted"
-								? "Setup Canceled"
-								: "Setup Failed"
+						: state === "external_running"
+							? "Running External Script"
+							: state === "success"
+								? "Setup Complete"
+								: state === "aborted"
+									? "Setup Canceled"
+									: "Setup Failed"
 				}
 			>
 				{/* Top Status Area */}
@@ -225,6 +282,21 @@ export function ScriptRunner({
 							/>
 							<text style={{ fg: theme.colors.text.hint }}>
 								Press [Esc] to cancel
+							</text>
+						</>
+					)}
+
+					{state === "external_running" && (
+						<>
+							<SpinnerWithElapsed
+								text="Waiting for external setup script..."
+								startTime={startTime}
+							/>
+							<text style={{ fg: theme.colors.text.secondary }}>
+								Script is running in: {terminalApp || "External Terminal"}
+							</text>
+							<text style={{ fg: theme.colors.text.hint }}>
+								[Enter] I have finished manually [Esc] Cancel
 							</text>
 						</>
 					)}
@@ -310,14 +382,22 @@ export function ScriptRunner({
 					}}
 				>
 					<text style={{ fg: theme.colors.text.muted }}>Output:</text>
-					{visibleLines.map((line, i) => (
-						<text
-							key={`${i}-${line.substring(0, 10)}`}
-							style={{ fg: theme.colors.text.secondary }}
-						>
-							{line}
+					{visibleLines.length > 0 ? (
+						visibleLines.map((line, i) => (
+							<text
+								key={`${i}-${line.substring(0, 10)}`}
+								style={{ fg: theme.colors.text.secondary }}
+							>
+								{line}
+							</text>
+						))
+					) : (
+						<text style={{ fg: theme.colors.text.hint, marginTop: 1 }}>
+							{spawnInTerminal
+								? "(Logs shown in external window)"
+								: "(No output yet)"}
 						</text>
-					))}
+					)}
 				</box>
 
 				{/* Footer Script Path */}

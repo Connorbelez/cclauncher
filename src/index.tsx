@@ -175,6 +175,8 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		active: boolean;
 		scriptPath: string;
 		worktreePath: string;
+		spawnInTerminal?: boolean;
+		terminalApp?: string;
 	} | null>(null);
 	const renderer = useRenderer();
 	const isGitRepo = gitRepoRoot !== null;
@@ -479,6 +481,8 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 				active: true,
 				scriptPath: projectConfig.data.postWorktreeScript,
 				worktreePath: worktreeResult.path,
+				spawnInTerminal: projectConfig.data.spawnInTerminal,
+				terminalApp: projectConfig.data.terminalApp,
 			});
 			return;
 		}
@@ -562,6 +566,8 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						projectPath={gitRepoRoot}
 						scriptPath={scriptRunnerState.scriptPath}
 						workingDirectory={scriptRunnerState.worktreePath}
+						spawnInTerminal={scriptRunnerState.spawnInTerminal}
+						terminalApp={scriptRunnerState.terminalApp}
 					/>
 				</box>
 			</FocusProvider>

@@ -1,12 +1,12 @@
-import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	getProjectConfig,
 	saveProjectConfig,
 	scriptExists,
 	type ProjectConfig,
 } from "@/lib/projectStore";
+import { FormField } from "./FormField";
 import { theme } from "@/theme";
 
 interface ProjectSettingsProps {
@@ -31,27 +31,57 @@ export function ProjectSettings({
 	onCancel,
 }: ProjectSettingsProps) {
 	const [scriptPath, setScriptPath] = useState("");
+	const [spawnInTerminal, setSpawnInTerminal] = useState(false);
+	const [terminalApp, setTerminalApp] = useState("");
+	const [customTerminalPath, setCustomTerminalPath] = useState("");
+
 	const [originalScriptPath, setOriginalScriptPath] = useState("");
+	const [originalSpawnInTerminal, setOriginalSpawnInTerminal] = useState(false);
+	const [originalTerminalApp, setOriginalTerminalApp] = useState("");
+
+	const [detectedTerminals, setDetectedTerminals] = useState<
+		{ name: string; path: string }[]
+	>([]);
+
+	// Field indices:
+	// 0: Script Path
+	// 1: Spawn in Terminal (Checkbox)
+	// 2: Terminal App (Select) - only if spawnInTerminal
+	// 3: Custom Path - only if terminalApp === 'custom'
+	const [activeFieldIndex, setActiveFieldIndex] = useState(0);
+	const [isSelectingTerminal, setIsSelectingTerminal] = useState(false);
+
 	const [error, setError] = useState<string | null>(null);
 	const [saveSuccess, setSaveSuccess] = useState(false);
+
+	// Load detected terminals on mount
+	useEffect(() => {
+		import("@/utils/terminalLauncher").then(({ detectTerminals }) => {
+			const terminals = detectTerminals();
+			setDetectedTerminals(terminals);
+		});
+	}, []);
 
 	// Load existing config on mount
 	useEffect(() => {
 		const result = getProjectConfig(gitRepoRoot);
-		if (result.ok && result.data?.postWorktreeScript) {
-			setScriptPath(result.data.postWorktreeScript);
-			setOriginalScriptPath(result.data.postWorktreeScript);
+		if (result.ok && result.data) {
+			setScriptPath(result.data.postWorktreeScript || "");
+			setOriginalScriptPath(result.data.postWorktreeScript || "");
+
+			setSpawnInTerminal(result.data.spawnInTerminal || false);
+			setOriginalSpawnInTerminal(result.data.spawnInTerminal || false);
+
+			const app = result.data.terminalApp || "";
+			setTerminalApp(app);
+			setOriginalTerminalApp(app);
 		}
 	}, [gitRepoRoot]);
 
-	// Clear error when scriptPath changes (user started typing)
-	const prevScriptPathRef = useRef(scriptPath);
+	// Clear error when inputs change
 	useEffect(() => {
-		if (prevScriptPathRef.current !== scriptPath && error) {
-			setError(null);
-		}
-		prevScriptPathRef.current = scriptPath;
-	}, [scriptPath, error]);
+		if (error) setError(null);
+	}, [scriptPath, spawnInTerminal, terminalApp, customTerminalPath, error]);
 
 	// Clear success message after a delay
 	useEffect(() => {
@@ -64,18 +94,27 @@ export function ProjectSettings({
 	}, [saveSuccess]);
 
 	const handleSave = useCallback(() => {
-		// Clear any previous error
 		setError(null);
 
-		// Validate the script path if provided
-		if (scriptPath.trim() && !scriptExists(gitRepoRoot, scriptPath.trim())) {
-			setError(`File not found: ${scriptPath.trim()}`);
+		const trimmedScript = scriptPath.trim();
+		if (trimmedScript && !scriptExists(gitRepoRoot, trimmedScript)) {
+			setError(`File not found: ${trimmedScript}`);
 			return;
 		}
 
-		// Save the config
+		let finalTerminalApp = terminalApp;
+		if (terminalApp === "custom") {
+			if (!customTerminalPath.trim()) {
+				setError("Please enter a custom terminal path");
+				return;
+			}
+			finalTerminalApp = customTerminalPath.trim();
+		}
+
 		const config: ProjectConfig = {
-			postWorktreeScript: scriptPath.trim() || undefined,
+			postWorktreeScript: trimmedScript || undefined,
+			spawnInTerminal,
+			terminalApp: finalTerminalApp || undefined,
 		};
 
 		const result = saveProjectConfig(gitRepoRoot, config);
@@ -84,49 +123,137 @@ export function ProjectSettings({
 			return;
 		}
 
-		setOriginalScriptPath(scriptPath.trim());
+		setOriginalScriptPath(trimmedScript);
+		setOriginalSpawnInTerminal(spawnInTerminal);
+		setOriginalTerminalApp(finalTerminalApp);
 		setSaveSuccess(true);
 
-		// Return to worktree view after short delay
 		setTimeout(() => {
 			onSave();
 		}, 500);
-	}, [gitRepoRoot, scriptPath, onSave]);
+	}, [
+		gitRepoRoot,
+		scriptPath,
+		spawnInTerminal,
+		terminalApp,
+		customTerminalPath,
+		onSave,
+	]);
 
 	const handleCancel = useCallback(() => {
-		// Restore original value
 		setScriptPath(originalScriptPath);
+		setSpawnInTerminal(originalSpawnInTerminal);
+		setTerminalApp(originalTerminalApp);
 		setError(null);
 		onCancel();
-	}, [originalScriptPath, onCancel]);
+	}, [
+		originalScriptPath,
+		originalSpawnInTerminal,
+		originalTerminalApp,
+		onCancel,
+	]);
 
-	const handleClear = useCallback(() => {
-		setScriptPath("");
-		setError(null);
-	}, []);
+	// Calculate visible fields to handle navigation correctly
+	const getVisibleFields = useCallback(() => {
+		const fields = [0, 1]; // Script (0) and Toggle (1) are always visible
+		if (spawnInTerminal) {
+			fields.push(2); // Terminal Select
+			if (terminalApp === "custom") {
+				fields.push(3); // Custom Path
+			}
+		}
+		return fields;
+	}, [spawnInTerminal, terminalApp]);
 
-	// Handle keyboard input
 	useKeyboard((key) => {
 		if (!isFocused) return;
 
-		if (key.name === "return") {
+		// Global shortcuts logic (Save, Cancel) - unless selecting in dropdown
+		if (!isSelectingTerminal) {
+			if (key.name === "return" && key.ctrl) {
+				// Ctrl+Enter to save anywhere? Or just Enter on non-inputs?
+				// Let's keep Enter for interactions, Ctrl+S maybe?
+				// TUI standard usually Enter submits forms unless in a multiline input.
+				// But here Enter is used for toggles/selects.
+			}
+
+			// Save on Ctrl+S or similar?
+			// Existing logic was Enter to save, but now Enter interacts.
+			// Let's say Enter on Script Path saves?
+			// Or better: Add a Save button field?
+			// Or simply: Enter on inputs saves, Enter on Toggle toggles, Enter on Select enters mode.
+		}
+
+		if (key.name === "escape") {
+			if (isSelectingTerminal) {
+				setIsSelectingTerminal(false);
+			} else {
+				handleCancel();
+			}
+			return;
+		}
+
+		if (key.name === "s" && key.ctrl) {
 			handleSave();
 			return;
 		}
 
-		if (key.name === "escape") {
-			handleCancel();
-			return;
+		// Field Navigation
+		if (!isSelectingTerminal) {
+			if (key.name === "down" || key.name === "tab") {
+				const visibleFields = getVisibleFields();
+				const currentIdx = visibleFields.indexOf(activeFieldIndex);
+				if (currentIdx !== -1 && currentIdx < visibleFields.length - 1) {
+					setActiveFieldIndex(visibleFields[currentIdx + 1] ?? 0);
+				}
+				return;
+			}
+			if (key.name === "up" || (key.name === "tab" && key.shift)) {
+				const visibleFields = getVisibleFields();
+				const currentIdx = visibleFields.indexOf(activeFieldIndex);
+				if (currentIdx > 0) {
+					setActiveFieldIndex(visibleFields[currentIdx - 1] ?? 0);
+				}
+				return;
+			}
 		}
 
-		// Clear on Ctrl+Backspace or when input is empty and backspace pressed
-		if (key.name === "backspace" && key.ctrl) {
-			handleClear();
-			return;
+		// Field specific handling
+		if (activeFieldIndex === 0) {
+			// Script Input
+			if (key.name === "return") handleSave();
+		} else if (activeFieldIndex === 1) {
+			// Toggle Spawn
+			if (key.name === "return" || key.name === "space") {
+				setSpawnInTerminal((p) => !p);
+			}
+		} else if (activeFieldIndex === 2) {
+			// Terminal Select
+			if (isSelectingTerminal) {
+				if (key.name === "up" || key.name === "down") {
+					const options = [
+						"",
+						...detectedTerminals.map((t) => t.path),
+						"custom",
+					];
+					const currentIndex = options.indexOf(terminalApp);
+					let nextIndex =
+						key.name === "up" ? currentIndex - 1 : currentIndex + 1;
+					if (nextIndex < 0) nextIndex = options.length - 1;
+					if (nextIndex >= options.length) nextIndex = 0;
+					setTerminalApp(options[nextIndex] ?? "");
+				} else if (key.name === "return") {
+					setIsSelectingTerminal(false);
+				}
+			} else if (key.name === "return" || key.name === "space") {
+				setIsSelectingTerminal(true);
+			}
+		} else if (activeFieldIndex === 3) {
+			// Custom Path Input
+			if (key.name === "return") handleSave();
 		}
 	});
 
-	const hasChanges = scriptPath !== originalScriptPath;
 	const borderColor = error
 		? theme.colors.error
 		: saveSuccess
@@ -139,166 +266,185 @@ export function ProjectSettings({
 
 	return (
 		<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
-			<box
-				flexDirection="column"
+			<scrollbox
 				style={{
 					width: "100%",
 					flexGrow: 1,
 					border: true,
 					borderStyle: "double",
 					borderColor,
-					padding: 1,
+					rootOptions: { backgroundColor: theme.colors.surface },
+					viewportOptions: { backgroundColor: theme.colors.background },
+					contentOptions: { backgroundColor: theme.colors.background },
+					scrollbarOptions: {
+						showArrows: true,
+						trackOptions: {
+							foregroundColor: theme.colors.primary,
+							backgroundColor: theme.colors.border,
+						},
+					},
 				}}
 				title="Project Settings"
 			>
-				{/* Description */}
-				<box flexDirection="column" marginBottom={1}>
+				<box flexDirection="column" padding={1} gap={1}>
+					{/* Description */}
 					<text style={{ fg: theme.colors.text.secondary }}>
-						Configure settings for this project. These settings are saved
+						Configure settings for this project.
 					</text>
-					<text style={{ fg: theme.colors.text.secondary }}>
-						and will apply whenever you work in this repository.
-					</text>
-				</box>
 
-				{/* Error display */}
-				{error && (
-					<box
-						flexDirection="column"
-						marginBottom={1}
-						style={{
-							border: true,
-							borderStyle: "rounded",
-							borderColor: theme.colors.error,
-							padding: 1,
-						}}
-					>
-						<text
-							style={{ fg: theme.colors.error }}
-							attributes={TextAttributes.BOLD}
-						>
-							Error
-						</text>
-						<text style={{ fg: theme.colors.text.primary }}>{error}</text>
-						<text style={{ fg: theme.colors.text.muted, marginTop: 1 }}>
-							Please enter a valid path to an existing file.
-						</text>
-					</box>
-				)}
+					{/* Error / Success */}
+					{error && (
+						<text style={{ fg: theme.colors.error }}>Error: {error}</text>
+					)}
+					{saveSuccess && (
+						<text style={{ fg: theme.colors.success }}>Saved!</text>
+					)}
 
-				{/* Success message */}
-				{saveSuccess && (
-					<box
-						flexDirection="column"
-						marginBottom={1}
-						style={{
-							border: true,
-							borderStyle: "rounded",
-							borderColor: theme.colors.success,
-							padding: 1,
-						}}
-					>
-						<text style={{ fg: theme.colors.success }}>
-							Settings saved successfully
-						</text>
-					</box>
-				)}
-
-				{/* Divider */}
-				<box marginBottom={1}>
-					<text style={{ fg: theme.colors.border }}>
-						{"─".repeat(60)}
-					</text>
-				</box>
-
-				{/* Post-Worktree Script section */}
-				<box flexDirection="column" marginBottom={1}>
-					<text
-						style={{ fg: theme.colors.secondary }}
-						attributes={TextAttributes.BOLD}
-					>
-						Post-Worktree Script
-					</text>
-					<box marginTop={1}>
-						<text style={{ fg: theme.colors.text.muted }}>
-							Script to run after creating a new worktree, before launching
-						</text>
-					</box>
-					<text style={{ fg: theme.colors.text.muted }}>
-						Claude Code. Use this to install dependencies, start dev servers,
-						etc.
-					</text>
-				</box>
-
-				{/* Input field */}
-				<box
-					flexDirection="column"
-					style={{
-						border: true,
-						borderStyle: isFocused ? "double" : "rounded",
-						borderColor: error
-							? theme.colors.error
-							: theme.colors.primary,
-						backgroundColor: theme.colors.surfaceHighlight,
-						paddingLeft: 1,
-						paddingRight: 1,
-						height: 3,
-					}}
-				>
-					<input
-						focused={isFocused}
-						onInput={setScriptPath}
-						placeholder="./scripts/worktree-setup.sh"
-						style={{
-							textColor: theme.colors.text.primary,
-							backgroundColor: theme.colors.surfaceHighlight,
-						}}
+					{/* 0: Script Path */}
+					<FormField
+						editMode={true}
+						isFocused={activeFieldIndex === 0}
+						label="Post-Worktree Script"
+						onChange={setScriptPath}
+						placeholder="./scripts/setup.sh"
 						value={scriptPath}
 					/>
-				</box>
 
-				{/* Help text */}
-				<box marginTop={1}>
-					<text style={{ fg: theme.colors.text.hint }}>
-						Tip: Use a relative path from the repository root
-					</text>
-				</box>
-
-				{/* Current project path */}
-				<box flexDirection="column" marginTop={2}>
-					<text style={{ fg: theme.colors.text.muted }}>Project:</text>
-					<text style={{ fg: theme.colors.text.secondary }}>{gitRepoRoot}</text>
-				</box>
-			</box>
-
-			{/* Status bar */}
-			<box
-				flexDirection="row"
-				gap={2}
-				style={{
-					paddingTop: 1,
-					paddingLeft: 1,
-				}}
-			>
-				<box flexDirection="row">
-					<text style={{ fg: theme.colors.primary }}>[Enter]</text>
-					<text style={{ fg: theme.colors.text.muted }}> Save</text>
-				</box>
-				<box flexDirection="row">
-					<text style={{ fg: theme.colors.primary }}>[Esc]</text>
-					<text style={{ fg: theme.colors.text.muted }}> Cancel</text>
-				</box>
-				<box flexDirection="row">
-					<text style={{ fg: theme.colors.primary }}>[Ctrl+Backspace]</text>
-					<text style={{ fg: theme.colors.text.muted }}> Clear</text>
-				</box>
-				{hasChanges && (
-					<box flexDirection="row">
-						<text style={{ fg: theme.colors.warning }}>*</text>
-						<text style={{ fg: theme.colors.text.muted }}> Unsaved</text>
+					{/* 1: Spawn in Terminal Toggle */}
+					<box flexDirection="column">
+						<text
+							style={{
+								fg:
+									activeFieldIndex === 1
+										? theme.colors.primary
+										: theme.colors.text.muted,
+							}}
+						>
+							Run in separate terminal
+						</text>
+						<box
+							style={{
+								border: true,
+								borderStyle: activeFieldIndex === 1 ? "double" : "rounded",
+								borderColor:
+									activeFieldIndex === 1
+										? theme.colors.primary
+										: theme.colors.border,
+								paddingLeft: 1,
+								paddingRight: 1,
+								height: 3,
+							}}
+						>
+							<text>{spawnInTerminal ? "[x] Enabled" : "[ ] Disabled"}</text>
+						</box>
 					</box>
-				)}
-			</box>
+
+					{/* 2: Terminal Selection */}
+					{spawnInTerminal && (
+						<box flexDirection="column">
+							<text
+								style={{
+									fg:
+										activeFieldIndex === 2
+											? theme.colors.primary
+											: theme.colors.text.muted,
+								}}
+							>
+								Terminal Application
+							</text>
+							<box
+								style={{
+									border: true,
+									borderStyle: activeFieldIndex === 2 ? "double" : "rounded",
+									borderColor:
+										activeFieldIndex === 2
+											? theme.colors.primary
+											: theme.colors.border,
+									paddingLeft: 1,
+									paddingRight: 1,
+									height: isSelectingTerminal
+										? detectedTerminals.length + 4
+										: 3, // Expanded height handled by layout if possible, else fixed
+									// Actually scrollbox handles height.
+								}}
+							>
+								{isSelectingTerminal ? (
+									<box flexDirection="column">
+										<text
+											style={{ fg: theme.colors.text.hint, marginBottom: 1 }}
+										>
+											Select a terminal:
+										</text>
+										{[
+											"",
+											...detectedTerminals.map((t) => t.path),
+											"custom",
+										].map((item) => {
+											const isSelected = item === terminalApp;
+											const label =
+												item === ""
+													? "Auto-detect (System Default)"
+													: item === "custom"
+														? "Custom Path..."
+														: detectedTerminals.find((t) => t.path === item)
+																?.name || item;
+											return (
+												<text
+													key={item}
+													style={{
+														fg: isSelected
+															? theme.colors.primary
+															: theme.colors.text.primary,
+														bg: isSelected
+															? theme.colors.surfaceHighlight
+															: undefined,
+													}}
+												>
+													{isSelected ? "> " : "  "}
+													{label}
+												</text>
+											);
+										})}
+									</box>
+								) : (
+									<text>
+										{terminalApp === ""
+											? "Auto-detect (System Default)"
+											: terminalApp === "custom"
+												? "Custom Path..."
+												: detectedTerminals.find((t) => t.path === terminalApp)
+														?.name || terminalApp}
+									</text>
+								)}
+							</box>
+							<text style={{ fg: theme.colors.text.hint }}>
+								{isSelectingTerminal
+									? "[Up/Down] Select  [Enter] Confirm"
+									: activeFieldIndex === 2
+										? "[Enter] Change Selection"
+										: ""}
+							</text>
+						</box>
+					)}
+
+					{/* 3: Custom Path */}
+					{spawnInTerminal && terminalApp === "custom" && (
+						<FormField
+							editMode={true}
+							isFocused={activeFieldIndex === 3}
+							label="Custom Terminal Path"
+							onChange={setCustomTerminalPath}
+							value={customTerminalPath}
+						/>
+					)}
+
+					<box marginTop={1}>
+						<text style={{ fg: theme.colors.text.hint }}>
+							[Up/Down] Navigate [Enter] Select/Save [Ctrl+S] Save [Esc] Cancel
+						</text>
+					</box>
+				</box>
+			</scrollbox>
 		</box>
 	);
 }

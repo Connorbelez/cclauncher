@@ -33,6 +33,8 @@ function getStoreDir(): string {
 // Schema for a single project's configuration
 export const projectConfigSchema = z.object({
 	postWorktreeScript: z.string().optional(),
+	spawnInTerminal: z.boolean().optional(),
+	terminalApp: z.string().optional(),
 	// Future extensibility: add more per-project settings here
 });
 
@@ -228,10 +230,7 @@ export function resolveScriptPath(
 /**
  * Check if a script file exists at the given path.
  */
-export function scriptExists(
-	projectPath: string,
-	scriptPath: string
-): boolean {
+export function scriptExists(projectPath: string, scriptPath: string): boolean {
 	const absolutePath = resolveScriptPath(projectPath, scriptPath);
 	return fs.existsSync(absolutePath);
 }
