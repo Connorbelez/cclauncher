@@ -25,12 +25,10 @@ import {
 	getModelList,
 	type Model,
 	type ModelsJson,
-	migrateModels,
 	modelSchema,
 	saveModel as saveModelToStore,
 	writeModels,
 } from "./lib/store";
-import modelsJson from "./models.json";
 import { resetTerminalForChild } from "./utils/terminal";
 
 // Convert store Model to SelectOption format for compatibility with existing components
@@ -53,63 +51,16 @@ function selectOptionToModel(option: SelectOption & { order?: number }): Model {
 	};
 }
 
-interface LegacyModel {
-	description?: string;
-	order?: number;
-	value?: Model["value"];
-}
-
 /**
- * Load model entries from the persistent store, migrating in-source models.json into the store if the store is empty.
+ * Load model entries from the persistent store (~/.claude-model-launcher/models.json).
  *
- * When the store is empty and in-source models exist, attempts to migrate those models into the store and logs the migrated count.
- * If loading from the store fails, falls back to the in-source models.json.
- *
- * @returns An array of `SelectOption` objects (each may include an `order` field). When falling back to in-source models, the result is sorted by `order`.
+ * @returns An array of `SelectOption` objects (each may include an `order` field), sorted by order.
  */
 function loadModels(): (SelectOption & { order?: number })[] {
-	// First, try to migrate in-source models if the store is empty
-	const storeResult = getModelList();
-
-	if (
-		storeResult.ok &&
-		storeResult.data.length === 0 &&
-		Object.keys(modelsJson).length > 0
-	) {
-		// Migrate from in-source models.json
-		const migrationSource: ModelsJson = {};
-		for (const [key, value] of Object.entries(modelsJson)) {
-			const legacyValue = value as unknown as LegacyModel;
-			migrationSource[key] = {
-				name: key,
-				description: legacyValue.description || "",
-				order: legacyValue.order,
-				value: (legacyValue.value as Model["value"]) || ({} as Model["value"]),
-			};
-		}
-		const migrateResult = migrateModels(migrationSource);
-		if (migrateResult.ok) {
-			console.log(`Migrated ${migrateResult.data.migrated} models to store.`);
-		}
-	}
-
-	// Load from store
 	const result = getModelList();
 	if (!result.ok) {
 		console.error(`Failed to load models: ${result.message}`);
-		// Fall back to in-source models
-		return Object.entries(modelsJson)
-			.map(([key, value]) => {
-				const legacyValue = value as unknown as LegacyModel;
-				return {
-					name: key,
-					description: legacyValue.description || "",
-					value:
-						(legacyValue.value as Model["value"]) || ({} as Model["value"]),
-					order: legacyValue.order,
-				};
-			})
-			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+		return [];
 	}
 
 	return result.data.map(modelToSelectOption);

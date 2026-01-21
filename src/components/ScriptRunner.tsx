@@ -1,11 +1,11 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SpinnerWithElapsed } from "./Spinner";
 import { resolveScriptPath } from "@/lib/projectStore";
 import { theme } from "@/theme";
 
-type ScriptState = "running" | "success" | "error";
+type ScriptState = "running" | "success" | "error" | "aborted";
 
 interface ScriptRunnerProps {
 	/** Relative or absolute path to the script */
@@ -19,6 +19,9 @@ interface ScriptRunnerProps {
 	/** Called when user chooses to abort (Escape on error) */
 	onAbort: () => void;
 }
+
+// Pre-compile regex for splitting lines
+const LINE_SPLIT_REGEX = /\r?\n/;
 
 /**
  * Component that executes a setup script and displays progress.
@@ -35,6 +38,8 @@ export function ScriptRunner({
 	const [exitCode, setExitCode] = useState<number | null>(null);
 	const [startTime] = useState(() => Date.now());
 	const [successDelay, setSuccessDelay] = useState(false);
+	const [output, setOutput] = useState<string[]>([]);
+	const procRef = useRef<ReturnType<typeof Bun.spawn> | null>(null);
 
 	const absoluteScriptPath = resolveScriptPath(projectPath, scriptPath);
 
@@ -44,11 +49,51 @@ export function ScriptRunner({
 
 		const runScript = async () => {
 			try {
+				// We wrap the script in "sh -c" to ensure it executes correctly
+				// and force PTY-like behavior for output if possible, but for now
+				// simple pipe is enough to capture output.
 				const proc = Bun.spawn(["sh", "-c", absoluteScriptPath], {
 					cwd: workingDirectory,
-					stdio: ["ignore", "ignore", "ignore"],
-					env: { ...process.env },
+					stdio: ["ignore", "pipe", "pipe"],
+					env: { ...process.env, FORCE_COLOR: "1" },
 				});
+
+				procRef.current = proc;
+
+				// Stream stdout
+				const readStream = async (stream: ReadableStream | null) => {
+					if (!stream) return;
+					const reader = stream.getReader();
+					const decoder = new TextDecoder();
+
+					try {
+						while (true) {
+							const { done, value } = await reader.read();
+							if (done) break;
+							const text = decoder.decode(value);
+							const lines = text.split(LINE_SPLIT_REGEX);
+
+							// Handle partial lines? For simplicity, we just push chunks or split by newline.
+							// To keep it simple in TUI, let's just push lines that have content
+							// or accumulate a buffer. For now, simple split is okay.
+							// We'll filter out empty strings to avoid gap spam.
+							const validLines = lines.filter((l) => l.length > 0);
+
+							setOutput((prev) => {
+								const next = [...prev, ...validLines];
+								// Keep last 100 lines
+								if (next.length > 100) return next.slice(-100);
+								return next;
+							});
+						}
+					} catch {
+						// Ignore stream errors
+					}
+				};
+
+				// Start reading streams without awaiting them (fire and forget)
+				readStream(proc.stdout);
+				readStream(proc.stderr);
 
 				const code = await proc.exited;
 
@@ -65,6 +110,8 @@ export function ScriptRunner({
 				if (isCancelled) return;
 				setExitCode(-1);
 				setState("error");
+			} finally {
+				procRef.current = null;
 			}
 		};
 
@@ -72,6 +119,10 @@ export function ScriptRunner({
 
 		return () => {
 			isCancelled = true;
+			// Kill process on unmount if valid
+			if (procRef.current) {
+				procRef.current.kill();
+			}
 		};
 	}, [absoluteScriptPath, workingDirectory]);
 
@@ -88,13 +139,26 @@ export function ScriptRunner({
 	// Handle keyboard input
 	const handleKeyboard = useCallback(
 		(key: { name?: string }) => {
-			if (state === "error") {
-				if (key.name === "escape") {
+			if (key.name === "escape") {
+				if (state === "running") {
+					// User wants to cancel running script
+					if (procRef.current) {
+						procRef.current.kill();
+					}
+					setState("aborted");
+				} else {
+					// In success/error/aborted state, escape means go back/abort
 					onAbort();
-				} else if (key.name === "return" || key.name === "space") {
-					// Continue anyway on Enter/Space
-					onComplete();
 				}
+				return;
+			}
+
+			if (
+				(key.name === "return" || key.name === "space") &&
+				state !== "running"
+			) {
+				// In error/success states, enter means continue
+				onComplete();
 			}
 		},
 		[state, onAbort, onComplete]
@@ -107,7 +171,12 @@ export function ScriptRunner({
 			? theme.colors.primary
 			: state === "success"
 				? theme.colors.success
-				: theme.colors.error;
+				: state === "aborted"
+					? theme.colors.warning
+					: theme.colors.error;
+
+	// Show last N lines
+	const visibleLines = output.slice(-15);
 
 	return (
 		<box
@@ -126,23 +195,26 @@ export function ScriptRunner({
 					border: true,
 					borderStyle: "double",
 					borderColor,
-					padding: 2,
+					padding: 1,
 				}}
 				title={
 					state === "running"
 						? "Running Setup Script"
 						: state === "success"
 							? "Setup Complete"
-							: "Setup Failed"
+							: state === "aborted"
+								? "Setup Canceled"
+								: "Setup Failed"
 				}
 			>
-				{/* Centered content */}
+				{/* Top Status Area */}
 				<box
 					flexDirection="column"
 					alignItems="center"
 					justifyContent="center"
-					flexGrow={1}
+					height={6}
 					gap={1}
+					style={{ border: false }}
 				>
 					{/* Status icon and message */}
 					{state === "running" && (
@@ -151,40 +223,31 @@ export function ScriptRunner({
 								text="Running setup script..."
 								startTime={startTime}
 							/>
-							<box marginTop={1}>
-								<text style={{ fg: theme.colors.text.secondary }}>
-									{scriptPath}
-								</text>
-							</box>
+							<text style={{ fg: theme.colors.text.hint }}>
+								Press [Esc] to cancel
+							</text>
 						</>
 					)}
 
 					{state === "success" && (
-						<>
-							<box flexDirection="row" gap={1}>
-								<text
-									style={{ fg: theme.colors.success }}
-									attributes={TextAttributes.BOLD}
-								>
-									✓
-								</text>
-								<text
-									style={{ fg: theme.colors.text.primary }}
-									attributes={TextAttributes.BOLD}
-								>
-									Script completed successfully
-								</text>
-							</box>
-							<box marginTop={1}>
-								<text style={{ fg: theme.colors.text.secondary }}>
-									Launching Claude Code...
-								</text>
-							</box>
-						</>
+						<box flexDirection="row" gap={1}>
+							<text
+								style={{ fg: theme.colors.success }}
+								attributes={TextAttributes.BOLD}
+							>
+								✓
+							</text>
+							<text
+								style={{ fg: theme.colors.text.primary }}
+								attributes={TextAttributes.BOLD}
+							>
+								Script completed successfully
+							</text>
+						</box>
 					)}
 
 					{state === "error" && (
-						<>
+						<box flexDirection="column" alignItems="center">
 							<box flexDirection="row" gap={1}>
 								<text
 									style={{ fg: theme.colors.error }}
@@ -199,39 +262,68 @@ export function ScriptRunner({
 									Script failed (exit code: {exitCode})
 								</text>
 							</box>
-							<box marginTop={1} flexDirection="column" alignItems="center">
-								<text style={{ fg: theme.colors.text.secondary }}>
-									Press Enter to continue anyway
+							<text style={{ fg: theme.colors.text.secondary }}>
+								Press Enter to continue anyway or Esc to go back
+							</text>
+						</box>
+					)}
+
+					{state === "aborted" && (
+						<box flexDirection="column" alignItems="center">
+							<box flexDirection="row" gap={1}>
+								<text
+									style={{ fg: theme.colors.warning }}
+									attributes={TextAttributes.BOLD}
+								>
+									!
 								</text>
-								<text style={{ fg: theme.colors.text.muted }}>
-									or Escape to abort
+								<text
+									style={{ fg: theme.colors.text.primary }}
+									attributes={TextAttributes.BOLD}
+								>
+									Script execution canceled
 								</text>
 							</box>
-						</>
+							<text style={{ fg: theme.colors.text.secondary }}>
+								Press Enter to continue launch or Esc to go back
+							</text>
+						</box>
 					)}
 				</box>
 
-				{/* Script path display at bottom */}
+				{/* Divider */}
+				<box marginBottom={0} height={1}>
+					<text style={{ fg: theme.colors.border }}>
+						{"─".repeat(
+							process.stdout.columns ? process.stdout.columns - 4 : 60
+						)}
+					</text>
+				</box>
+
+				{/* Output Console */}
 				<box
 					flexDirection="column"
+					flexGrow={1}
 					style={{
-						marginTop: 2,
-						padding: 1,
-						border: true,
-						borderStyle: "rounded",
 						borderColor: theme.colors.border,
+						paddingTop: 0,
 					}}
 				>
-					<text style={{ fg: theme.colors.text.muted }}>Script:</text>
-					<text style={{ fg: theme.colors.text.secondary }}>
-						{absoluteScriptPath}
-					</text>
-					<text style={{ fg: theme.colors.text.muted, marginTop: 1 }}>
-						Working directory:
-					</text>
-					<text style={{ fg: theme.colors.text.secondary }}>
-						{workingDirectory}
-					</text>
+					<text style={{ fg: theme.colors.text.muted }}>Output:</text>
+					{visibleLines.map((line, i) => (
+						<text
+							key={`${i}-${line.substring(0, 10)}`}
+							style={{ fg: theme.colors.text.secondary }}
+						>
+							{line}
+						</text>
+					))}
+				</box>
+
+				{/* Footer Script Path */}
+				<box marginTop={1}>
+					<text style={{ fg: theme.colors.text.muted }}>Running: </text>
+					<text style={{ fg: theme.colors.text.hint }}>{scriptPath}</text>
 				</box>
 			</box>
 		</box>
