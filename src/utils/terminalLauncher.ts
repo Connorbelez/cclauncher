@@ -1,6 +1,7 @@
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
+import { logger } from "./logger";
 
 export interface SystemTerminal {
 	name: string;
@@ -58,7 +59,9 @@ export async function launchExternalTerminal(
 	if (fs.existsSync(markerFile)) {
 		try {
 			fs.unlinkSync(markerFile);
-		} catch {}
+		} catch (err) {
+			logger.error(`Failed to cleanup marker file ${markerFile}`, err);
+		}
 	}
 
 	const wrapperContent = `#!/bin/bash
@@ -101,7 +104,7 @@ exit $EXIT_CODE
 
 	// Launch
 	if (platform === "darwin") {
-		const args = ["-a", terminalAppPath || "Terminal", wrapperScriptPath];
+		const _args = ["-a", terminalAppPath || "Terminal", wrapperScriptPath];
 		// If specific app not provided or just "Terminal", might default to Terminal.app
 		// "open -a Terminal script.sh" works.
 		// "open script.sh" opens in default editor or runner.

@@ -1,7 +1,15 @@
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { launchExternalTerminal } from "../utils/terminalLauncher";
+import {
+	createDetachedWorktree,
+	generateWorktreePath,
+	getGitRepoRoot,
+	listWorktrees,
+} from "./git";
 import { formatModelInfo, launchClaudeCode } from "./launcher";
+import { getProjectConfig, saveProjectConfig } from "./projectStore";
 import {
 	getDefaultModel,
 	getModel,
@@ -10,15 +18,6 @@ import {
 	type Model,
 	saveModel,
 } from "./store";
-import {
-	getGitRepoRoot,
-	listWorktrees,
-	generateWorktreePath,
-	createDetachedWorktree,
-} from "./git";
-import { getProjectConfig, saveProjectConfig } from "./projectStore";
-import { launchExternalTerminal } from "../utils/terminalLauncher";
-import fs from "node:fs";
 
 export type CliCommand =
 	| { type: "tui" }

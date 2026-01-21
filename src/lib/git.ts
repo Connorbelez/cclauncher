@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { logger } from "@/utils/logger";
 
 /**
  * Git utilities for detecting repos and managing worktrees.
@@ -31,7 +32,8 @@ export async function getGitRepoRoot(): Promise<string | null> {
 		}
 		const output = await new Response(proc.stdout).text();
 		return output.trim();
-	} catch {
+	} catch (err) {
+		logger.error("Failed to get git repo root", err);
 		return null;
 	}
 }
@@ -51,7 +53,8 @@ export async function getCurrentCommit(): Promise<string | null> {
 		}
 		const output = await new Response(proc.stdout).text();
 		return output.trim();
-	} catch {
+	} catch (err) {
+		logger.error("Failed to get current commit", err);
 		return null;
 	}
 }
@@ -101,7 +104,8 @@ export async function getWorktreeDiffStats(
 		}
 
 		return { additions, deletions };
-	} catch {
+	} catch (err) {
+		logger.error(`Failed to get worktree diff stats for ${worktreePath}`, err);
 		return null;
 	}
 }
@@ -171,6 +175,27 @@ export function generateWorktreePath(repoRoot: string): string {
 }
 
 /**
+ * Generate a worktree path with a model name suffix for multi-instance launches.
+ * Creates unique paths like: .worktrees/claude-{modelName}-{timestamp}
+ *
+ * @param repoRoot The root of the git repository
+ * @param modelName The model name to include in the path (will be sanitized)
+ * @returns The path for a new worktree with model name and timestamp
+ */
+export function generateWorktreePathWithSuffix(
+	repoRoot: string,
+	modelName: string
+): string {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	// Sanitize model name: keep alphanumeric, dash, underscore only
+	const safeName = modelName.replace(/[^a-zA-Z0-9-_]/g, "_").slice(0, 30);
+	const normalizedRoot = repoRoot.endsWith("/")
+		? repoRoot.slice(0, -1)
+		: repoRoot;
+	return `${normalizedRoot}/.worktrees/claude-${safeName}-${timestamp}`;
+}
+
+/**
  * Information about a git worktree.
  */
 export interface WorktreeInfo {
@@ -190,6 +215,10 @@ export interface WorktreeInfo {
 	relativePath: string;
 	/** Uncommitted change statistics (null if unavailable) */
 	diffStats?: DiffStats | null;
+	/** Whether this worktree can merge cleanly into the default branch */
+	isMergeable?: boolean | null;
+	/** The branch this worktree was based on (upstream tracking) */
+	baseBranch?: string | null;
 }
 
 export type ListWorktreesResult =
@@ -227,19 +256,33 @@ export async function listWorktrees(
 		// Filter out worktrees that don't exist on disk (e.g. manually deleted folders)
 		const worktrees = allWorktrees.filter((wt) => fs.existsSync(wt.path));
 
-		// Fetch diff stats for all worktrees in parallel
-		const statsPromises = worktrees.map((wt) => getWorktreeDiffStats(wt.path));
-		const allStats = await Promise.all(statsPromises);
+		// Fetch diff stats, mergeability, and base branch for all worktrees in parallel
+		// First get default branch for mergeability checks
+		const defaultBranch = await getDefaultBranch(repoRoot);
 
-		// Attach stats to each worktree
-		for (let i = 0; i < worktrees.length; i++) {
-			const wt = worktrees[i];
-			if (wt) {
-				wt.diffStats = allStats[i] ?? null;
-			}
-		}
+		const enrichedWorktreesPromises = worktrees.map(async (wt) => {
+			const [diffStats, isMergeable, baseBranch] = await Promise.all([
+				getWorktreeDiffStats(wt.path),
+				// Check mergeability against default branch for all worktrees (except main itself)
+				wt.isMain
+					? Promise.resolve(true)
+					: checkMergeability(wt.path, defaultBranch),
+				// Get base branch
+				wt.branch
+					? getBaseBranch(wt.branch, repoRoot)
+					: getDetachedOriginalBranch(wt.head, repoRoot),
+			]);
 
-		return { ok: true, worktrees };
+			return {
+				...wt,
+				diffStats,
+				isMergeable,
+				baseBranch,
+			};
+		});
+
+		const enrichedWorktrees = await Promise.all(enrichedWorktreesPromises);
+		return { ok: true, worktrees: enrichedWorktrees };
 	} catch (err) {
 		return {
 			ok: false,
@@ -249,6 +292,7 @@ export async function listWorktrees(
 }
 
 const REFS_HEADS_REGEX = /^refs\/heads\//;
+const REFS_REMOTES_REGEX = /^refs\/remotes\//;
 
 /**
  * Parse the porcelain output of `git worktree list --porcelain`.
@@ -340,4 +384,218 @@ function finalizeWorktree(
 		isMain,
 		relativePath,
 	};
+}
+
+/**
+ * Check if the worktree's HEAD can be merged into the target branch without conflicts.
+ * Uses `git merge-tree` to perform a dry-run merge in memory.
+ *
+ * @param worktreePath - Path to the worktree
+ * @param targetBranch - Branch to merge into (e.g., "main")
+ * @returns true if mergeable (exit code 0), false if conflicts, null on error
+ */
+export async function checkMergeability(
+	worktreePath: string,
+	targetBranch: string
+): Promise<boolean | null> {
+	try {
+		// git merge-tree <target-branch> <source-commit>
+		// We run this from the worktree directory so HEAD resolves correctly
+		const proc = Bun.spawn(["git", "merge-tree", targetBranch, "HEAD"], {
+			cwd: worktreePath,
+			stdout: "ignore", // We only care about exit code (0 = success/clean, 1 = conflict)
+			stderr: "ignore",
+		});
+		const exitCode = await proc.exited;
+		return exitCode === 0;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get the upstream/base branch for a given branch name.
+ * e.g. if 'feature' tracks 'origin/main', returns 'main' (simplified).
+ *
+ * @param branchName - The local branch name
+ * @param cwd - Repository root
+ * @returns The base branch name or null
+ */
+export async function getBaseBranch(
+	branchName: string,
+	cwd: string
+): Promise<string | null> {
+	try {
+		// git config --get branch.<name>.merge
+		// returns refs/heads/main or similar
+		const proc = Bun.spawn(
+			["git", "config", "--get", `branch.${branchName}.merge`],
+			{
+				cwd,
+				stdout: "pipe",
+				stderr: "pipe",
+			}
+		);
+		const exitCode = await proc.exited;
+		if (exitCode !== 0) {
+			return null;
+		}
+		const output = await new Response(proc.stdout).text();
+		const ref = output.trim();
+		// Strip refs/heads/ or refs/remotes/origin/
+		return ref.replace(REFS_HEADS_REGEX, "").replace(REFS_REMOTES_REGEX, "");
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Get the default branch name (e.g. main or master).
+ */
+export async function getDefaultBranch(cwd: string): Promise<string> {
+	try {
+		// Try to get the remote HEAD
+		const proc = Bun.spawn(
+			["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+			{
+				cwd,
+				stdout: "pipe",
+				stderr: "pipe",
+			}
+		);
+		const exitCode = await proc.exited;
+
+		if (exitCode === 0) {
+			const output = await new Response(proc.stdout).text();
+			// Output is like "refs/remotes/origin/main"
+			const parts = output.trim().split("/");
+			return parts.at(-1) || "main";
+		}
+
+		// Fallback: check if main exists
+		return "main";
+	} catch {
+		return "main";
+	}
+}
+
+/**
+ * Try to discover the original branch for a detached HEAD.
+ * Returns the first branch containing this commit, or a symbolic reference.
+ */
+export async function getDetachedOriginalBranch(
+	head: string,
+	repoRoot: string
+): Promise<string | null> {
+	try {
+		// 1. Try to find a branch that contains this commit
+		const branchProc = Bun.spawn(
+			["git", "branch", "--format=%(refname:short)", "--contains", head],
+			{
+				cwd: repoRoot,
+				stdout: "pipe",
+				stderr: "pipe",
+			}
+		);
+		const branchExit = await branchProc.exited;
+		if (branchExit === 0) {
+			const output = await new Response(branchProc.stdout).text();
+			const branches = output.trim().split("\n").filter(Boolean);
+			if (branches.length > 0) {
+				// Prefer 'main' or 'master' if available, otherwise first one
+				const mainBranch = branches.find((b) => b === "main" || b === "master");
+				return mainBranch || branches[0] || null;
+			}
+		}
+
+		// 2. Fallback to name-rev
+		const nameProc = Bun.spawn(
+			["git", "name-rev", "--name-only", "--refs=refs/heads/*", head],
+			{
+				cwd: repoRoot,
+				stdout: "pipe",
+				stderr: "pipe",
+			}
+		);
+		const nameExit = await nameProc.exited;
+		if (nameExit === 0) {
+			const name = await new Response(nameProc.stdout).text();
+			const trimmed = name.trim();
+			if (trimmed && trimmed !== "undefined") {
+				return trimmed;
+			}
+		}
+
+		return null;
+	} catch (err) {
+		logger.error(`Error in getDetachedOriginalBranch for ${head}`, err);
+		return null;
+	}
+}
+
+/**
+ * Merge a worktree HEAD into the specified target branch in the main repo.
+ */
+export async function mergeWorktreeIntoDefault(
+	repoRoot: string,
+	sourceHead: string,
+	targetBranch: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+	try {
+		// 1. Check if the main repo is clean
+		const statusProc = Bun.spawn(["git", "status", "--porcelain"], {
+			cwd: repoRoot,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		await statusProc.exited;
+		const statusOutput = await new Response(statusProc.stdout).text();
+		if (statusOutput.trim() !== "") {
+			return {
+				ok: false,
+				message:
+					"Main repository has uncommitted changes. Please commit or stash them first.",
+			};
+		}
+
+		// 2. Ensure we are on the target branch in the main repo
+		// (This is a limitation - we only merge into the current checkout if it matches targetBranch)
+		const branchProc = Bun.spawn(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
+			cwd: repoRoot,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		await branchProc.exited;
+		const currentBranch = (await new Response(branchProc.stdout).text()).trim();
+
+		if (currentBranch !== targetBranch) {
+			return {
+				ok: false,
+				message: `Main repo is on '${currentBranch}', but you are trying to merge into '${targetBranch}'. Please switch branches first.`,
+			};
+		}
+
+		// 3. Perform the merge
+		const mergeProc = Bun.spawn(["git", "merge", sourceHead], {
+			cwd: repoRoot,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const exitCode = await mergeProc.exited;
+
+		if (exitCode !== 0) {
+			const stderr = await new Response(mergeProc.stderr).text();
+			return {
+				ok: false,
+				message: `Merge failed: ${stderr.trim()}`,
+			};
+		}
+
+		return { ok: true };
+	} catch (err) {
+		return {
+			ok: false,
+			message: `Unexpected error during merge: ${err instanceof Error ? err.message : String(err)}`,
+		};
+	}
 }

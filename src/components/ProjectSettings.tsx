@@ -2,12 +2,12 @@ import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useState } from "react";
 import {
 	getProjectConfig,
+	type ProjectConfig,
 	saveProjectConfig,
 	scriptExists,
-	type ProjectConfig,
 } from "@/lib/projectStore";
-import { FormField } from "./FormField";
 import { theme } from "@/theme";
+import { FormField } from "./FormField";
 
 interface ProjectSettingsProps {
 	/** Git repository root path */
@@ -69,8 +69,8 @@ export function ProjectSettings({
 			setScriptPath(result.data.postWorktreeScript || "");
 			setOriginalScriptPath(result.data.postWorktreeScript || "");
 
-			setSpawnInTerminal(result.data.spawnInTerminal || false);
-			setOriginalSpawnInTerminal(result.data.spawnInTerminal || false);
+			setSpawnInTerminal(result.data.spawnInTerminal ?? true);
+			setOriginalSpawnInTerminal(result.data.spawnInTerminal ?? true);
 
 			const app = result.data.terminalApp || "";
 			setTerminalApp(app);
@@ -81,7 +81,7 @@ export function ProjectSettings({
 	// Clear error when inputs change
 	useEffect(() => {
 		if (error) setError(null);
-	}, [scriptPath, spawnInTerminal, terminalApp, customTerminalPath, error]);
+	}, [error]);
 
 	// Clear success message after a delay
 	useEffect(() => {
@@ -168,20 +168,10 @@ export function ProjectSettings({
 	useKeyboard((key) => {
 		if (!isFocused) return;
 
-		// Global shortcuts logic (Save, Cancel) - unless selecting in dropdown
-		if (!isSelectingTerminal) {
-			if (key.name === "return" && key.ctrl) {
-				// Ctrl+Enter to save anywhere? Or just Enter on non-inputs?
-				// Let's keep Enter for interactions, Ctrl+S maybe?
-				// TUI standard usually Enter submits forms unless in a multiline input.
-				// But here Enter is used for toggles/selects.
-			}
-
-			// Save on Ctrl+S or similar?
-			// Existing logic was Enter to save, but now Enter interacts.
-			// Let's say Enter on Script Path saves?
-			// Or better: Add a Save button field?
-			// Or simply: Enter on inputs saves, Enter on Toggle toggles, Enter on Select enters mode.
+		// Ctrl+S to save from anywhere (except terminal dropdown)
+		if (!isSelectingTerminal && key.name === "s" && key.ctrl) {
+			handleSave();
+			return;
 		}
 
 		if (key.name === "escape") {
@@ -248,9 +238,9 @@ export function ProjectSettings({
 			} else if (key.name === "return" || key.name === "space") {
 				setIsSelectingTerminal(true);
 			}
-		} else if (activeFieldIndex === 3) {
+		} else if (activeFieldIndex === 3 && key.name === "return") {
 			// Custom Path Input
-			if (key.name === "return") handleSave();
+			handleSave();
 		}
 	});
 
@@ -286,7 +276,7 @@ export function ProjectSettings({
 				}}
 				title="Project Settings"
 			>
-				<box flexDirection="column" padding={1} gap={1}>
+				<box flexDirection="column" gap={1} padding={1}>
 					{/* Description */}
 					<text style={{ fg: theme.colors.text.secondary }}>
 						Configure settings for this project.

@@ -1,11 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SpinnerWithElapsed } from "./Spinner";
 import { resolveScriptPath } from "@/lib/projectStore";
 import { theme } from "@/theme";
-import path from "node:path";
-import fs from "node:fs";
+import { logger } from "@/utils/logger";
+import { SpinnerWithElapsed } from "./Spinner";
 
 type ScriptState =
 	| "running"
@@ -103,7 +104,9 @@ export function ScriptRunner({
 						// Cleanup marker
 						try {
 							fs.unlinkSync(markerFile);
-						} catch {}
+						} catch (err) {
+							logger.error(`Failed to cleanup marker file ${markerFile}`, err);
+						}
 
 						if (!isCancelled) {
 							setState("success");
@@ -209,11 +212,12 @@ export function ScriptRunner({
 				return;
 			}
 
-			if (key.name === "return" || key.name === "space") {
+			if (
+				(key.name === "return" || key.name === "space") &&
+				state !== "running"
+			) {
 				// Allow manual continuation for external scripts too
-				if (state !== "running") {
-					onComplete();
-				}
+				onComplete();
 			}
 		},
 		[state, onAbort, onComplete]
@@ -266,19 +270,19 @@ export function ScriptRunner({
 			>
 				{/* Top Status Area */}
 				<box
-					flexDirection="column"
 					alignItems="center"
-					justifyContent="center"
-					height={6}
+					flexDirection="column"
 					gap={1}
+					height={6}
+					justifyContent="center"
 					style={{ border: false }}
 				>
 					{/* Status icon and message */}
 					{state === "running" && (
 						<>
 							<SpinnerWithElapsed
-								text="Running setup script..."
 								startTime={startTime}
+								text="Running setup script..."
 							/>
 							<text style={{ fg: theme.colors.text.hint }}>
 								Press [Esc] to cancel
@@ -289,8 +293,8 @@ export function ScriptRunner({
 					{state === "external_running" && (
 						<>
 							<SpinnerWithElapsed
-								text="Waiting for external setup script..."
 								startTime={startTime}
+								text="Waiting for external setup script..."
 							/>
 							<text style={{ fg: theme.colors.text.secondary }}>
 								Script is running in: {terminalApp || "External Terminal"}
@@ -304,14 +308,14 @@ export function ScriptRunner({
 					{state === "success" && (
 						<box flexDirection="row" gap={1}>
 							<text
-								style={{ fg: theme.colors.success }}
 								attributes={TextAttributes.BOLD}
+								style={{ fg: theme.colors.success }}
 							>
 								✓
 							</text>
 							<text
-								style={{ fg: theme.colors.text.primary }}
 								attributes={TextAttributes.BOLD}
+								style={{ fg: theme.colors.text.primary }}
 							>
 								Script completed successfully
 							</text>
@@ -319,17 +323,17 @@ export function ScriptRunner({
 					)}
 
 					{state === "error" && (
-						<box flexDirection="column" alignItems="center">
+						<box alignItems="center" flexDirection="column">
 							<box flexDirection="row" gap={1}>
 								<text
-									style={{ fg: theme.colors.error }}
 									attributes={TextAttributes.BOLD}
+									style={{ fg: theme.colors.error }}
 								>
 									✗
 								</text>
 								<text
-									style={{ fg: theme.colors.text.primary }}
 									attributes={TextAttributes.BOLD}
+									style={{ fg: theme.colors.text.primary }}
 								>
 									Script failed (exit code: {exitCode})
 								</text>
@@ -341,17 +345,17 @@ export function ScriptRunner({
 					)}
 
 					{state === "aborted" && (
-						<box flexDirection="column" alignItems="center">
+						<box alignItems="center" flexDirection="column">
 							<box flexDirection="row" gap={1}>
 								<text
-									style={{ fg: theme.colors.warning }}
 									attributes={TextAttributes.BOLD}
+									style={{ fg: theme.colors.warning }}
 								>
 									!
 								</text>
 								<text
-									style={{ fg: theme.colors.text.primary }}
 									attributes={TextAttributes.BOLD}
+									style={{ fg: theme.colors.text.primary }}
 								>
 									Script execution canceled
 								</text>
@@ -364,7 +368,7 @@ export function ScriptRunner({
 				</box>
 
 				{/* Divider */}
-				<box marginBottom={0} height={1}>
+				<box height={1} marginBottom={0}>
 					<text style={{ fg: theme.colors.border }}>
 						{"─".repeat(
 							process.stdout.columns ? process.stdout.columns - 4 : 60
