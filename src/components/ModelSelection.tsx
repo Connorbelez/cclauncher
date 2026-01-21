@@ -47,6 +47,8 @@ export function ModelSelection(props: ModelSelectionProps) {
 				if (props.moveMode) props.onReorderEnd();
 			} else if (name === "w" && props.isGitRepo && !props.moveMode) {
 				setWorktreeMode(!worktreeMode);
+			} else if (name === "e" && isFocused && !props.moveMode) {
+				// Handled by FocusProvider to switch focus and enter edit mode
 			} else if (name === "escape") {
 				if (props.moveMode) {
 					props.onMoveModeChange(false);
@@ -66,7 +68,7 @@ export function ModelSelection(props: ModelSelectionProps) {
 				setConfirmDelete(true);
 			}
 		},
-		[props, worktreeMode]
+		[props, worktreeMode, isFocused]
 	);
 
 	const handleKeyboard = useCallback(
@@ -102,19 +104,20 @@ export function ModelSelection(props: ModelSelectionProps) {
 		? theme.colors.warning
 		: props.moveMode
 			? theme.colors.success
-			: theme.colors.secondary;
+			: isFocused
+				? theme.colors.primary
+				: theme.colors.text.muted;
 
 	return (
-		<box flexDirection="column" style={{ width: "100%", height: "80%" }}>
+		<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
 			<scrollbox
 				style={{
 					width: "100%",
-					height: "100%",
+					flexGrow: 1,
 					border: true,
 					borderStyle: isFocused ? "double" : "rounded",
 					borderColor,
 					rootOptions: { backgroundColor: theme.colors.surface },
-					wrapperOptions: { backgroundColor: theme.colors.surfaceHighlight },
 					viewportOptions: { backgroundColor: theme.colors.background },
 					contentOptions: { backgroundColor: theme.colors.background },
 					scrollbarOptions: {
@@ -125,7 +128,7 @@ export function ModelSelection(props: ModelSelectionProps) {
 						},
 					},
 				}}
-				title="Model Selection"
+				title={`Models (${props.models.length})`}
 			>
 				<select
 					focused={isFocused && !props.moveMode}
@@ -148,29 +151,6 @@ export function ModelSelection(props: ModelSelectionProps) {
 					}}
 				/>
 			</scrollbox>
-			<box style={{ paddingLeft: 1, paddingTop: 0, height: 1 }}>
-				<text
-					style={{
-						fg: confirmDelete
-							? theme.colors.error
-							: worktreeMode
-								? theme.colors.warning
-								: theme.colors.text.muted,
-					}}
-				>
-					{confirmDelete
-						? `Delete "${props.selectedModel.name}"? [y] Yes  [n/Esc] Cancel`
-						: isFocused
-							? props.moveMode
-								? "[↑↓] Move  [m/Enter/Esc] Save & Exit"
-								: worktreeMode
-									? "[Enter] Launch in Worktree  [w/Esc] Cancel"
-									: props.isGitRepo
-										? "[↑↓] Navigate  [Enter] Launch  [w] Worktree  [m] Reorder  [d] Delete"
-										: "[↑↓] Navigate  [Enter] Launch  [m] Reorder  [d] Delete"
-							: "[Tab] Focus"}
-				</text>
-			</box>
 		</box>
 	);
 }

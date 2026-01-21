@@ -214,7 +214,7 @@ export function NewModelForm() {
 			<scrollbox
 				style={{
 					width: "100%",
-					height: "100%",
+					flexGrow: 1,
 					border: true,
 					borderStyle: "rounded",
 					borderColor: theme.colors.primary,
@@ -411,14 +411,6 @@ export function NewModelForm() {
 							placeholder="e.g. claude-3-haiku-20240307"
 							value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL}
 						/>
-					</box>
-
-					{/* Footer hints */}
-					<box marginTop={1} paddingTop={1}>
-						<text style={{ fg: theme.colors.text.muted }}>
-							[Enter] Save [Esc] Cancel [Cmd+C / Ctrl+Shift+C] Copy [Cmd+V /
-							Ctrl+V] Paste
-						</text>
 					</box>
 				</box>
 			</scrollbox>
