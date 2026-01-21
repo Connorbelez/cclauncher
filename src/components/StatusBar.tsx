@@ -86,6 +86,7 @@ export function StatusBar({
 			{ key: "Tab", desc: "Switch" },
 			{ key: "↑↓", desc: "Navigate" },
 			{ key: "n", desc: "New Worktree" },
+			{ key: "s", desc: "Settings" },
 			{ key: "r", desc: "Refresh" }
 		);
 	} else {
