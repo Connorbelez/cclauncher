@@ -378,7 +378,11 @@ async function runSetupScript(
 		console.log("Waiting for external setup script to complete...");
 
 		// Poll for marker file
-		const markerFile = path.join(worktreePath, ".cclauncher_setup_done");
+		const markerFile = path.join(
+			worktreePath,
+			".cclauncher",
+			"setup_done"
+		);
 		return new Promise((resolve) => {
 			const interval = setInterval(() => {
 				if (fs.existsSync(markerFile)) {

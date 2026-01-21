@@ -319,10 +319,18 @@ export async function launchClaudeCodeBackground(
 		})
 		.join(" ");
 
+	const ensureLauncherDir = (basePath: string): string => {
+		const launcherDir = path.join(basePath, ".cclauncher");
+		if (!fs.existsSync(launcherDir)) {
+			fs.mkdirSync(launcherDir, { recursive: true });
+		}
+		return launcherDir;
+	};
+
 	// Create a wrapper script that sets environment and runs claude
 	const timestamp = Date.now();
 	const scriptName = `.cclauncher_${model.name.replace(/[^a-zA-Z0-9]/g, "_")}_${timestamp}.sh`;
-	const wrapperScriptPath = path.join(cwd, scriptName);
+	const wrapperScriptPath = path.join(ensureLauncherDir(cwd), scriptName);
 
 	// Build environment export statements
 	const envExports = Object.entries(env)

@@ -93,7 +93,8 @@ export function ScriptRunner({
 				// Start polling for completion marker
 				const markerFile = path.join(
 					workingDirectory,
-					".cclauncher_setup_done"
+					".cclauncher",
+					"setup_done"
 				);
 
 				// Poll every 500ms
