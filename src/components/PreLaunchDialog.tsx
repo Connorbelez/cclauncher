@@ -22,7 +22,7 @@ interface PermissionModeOption {
 const PERMISSION_MODES: PermissionModeOption[] = [
 	{ value: "default", label: "Default" },
 	{ value: "plan", label: "Plan Mode" },
-	{ value: "autoAccept", label: "Auto-Accept All" },
+	{ value: "autoAccept", label: "Auto Accept All" },
 	{ value: "acceptEdits", label: "Accept Edits Only" },
 ];
 

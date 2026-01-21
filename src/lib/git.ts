@@ -399,15 +399,37 @@ export async function checkMergeability(
 	targetBranch: string
 ): Promise<boolean | null> {
 	try {
-		// git merge-tree <target-branch> <source-commit>
-		// We run this from the worktree directory so HEAD resolves correctly
-		const proc = Bun.spawn(["git", "merge-tree", targetBranch, "HEAD"], {
+		// Prefer newer merge-tree behavior that returns conflict exit codes.
+		const modernProc = Bun.spawn(
+			["git", "merge-tree", "--write-tree", targetBranch, "HEAD"],
+			{
+				cwd: worktreePath,
+				stdout: "ignore",
+				stderr: "pipe",
+			}
+		);
+		const modernExit = await modernProc.exited;
+		if (modernExit === 0) return true;
+		if (modernExit === 1) return false;
+
+		const modernErr = await new Response(modernProc.stderr).text();
+		if (!/unknown option|usage: git merge-tree/i.test(modernErr)) {
+			return null;
+		}
+
+		// Fallback for older git: parse stdout for conflict markers.
+		const legacyProc = Bun.spawn(["git", "merge-tree", targetBranch, "HEAD"], {
 			cwd: worktreePath,
-			stdout: "ignore", // We only care about exit code (0 = success/clean, 1 = conflict)
-			stderr: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
 		});
-		const exitCode = await proc.exited;
-		return exitCode === 0;
+		const legacyExit = await legacyProc.exited;
+		const legacyOutput = await new Response(legacyProc.stdout).text();
+		if (legacyExit !== 0) {
+			return null;
+		}
+		const hasConflicts = /^(<<<<<<<|=======|>>>>>>>)/m.test(legacyOutput);
+		return !hasConflicts;
 	} catch {
 		return null;
 	}

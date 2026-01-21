@@ -2,6 +2,7 @@ import fs, { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchExternalTerminal } from "../utils/terminalLauncher";
+import { resolveScriptExecution, type ScriptExecution } from "./scriptExecution";
 import {
 	createDetachedWorktree,
 	generateWorktreePath,
@@ -70,8 +71,8 @@ USAGE:
   claude-launch [OPTIONS] [COMMAND]
 
 COMMANDS:
-  (no command)        Launch the TUI for interactive model selection
-  --model <name>      Launch Claude Code with the specified model
+  (no command)         Launch the TUI for interactive model selection
+  --model <name>       Launch Claude Code with the specified model
   --list               List all configured models
   --add                Add a new model (use with other flags)
   --worktree, -w       Create a new worktree and launch Claude Code in it
@@ -82,10 +83,11 @@ COMMANDS:
   --version            Show version information
 
 OPTIONS FOR --project-config:
-  --show               Show current project configuration
-  --set-script <path>  Set the post-worktree setup script
-  --spawn-in-terminal <true|false> Run script in a separate terminal
-  --terminal-app <path|name> Specific terminal app to use
+  --show                          Show current project configuration
+  --set-script <path>             Set the post-worktree setup script
+  --spawn-in-terminal <value>     Run script in a separate terminal
+                                 (true/false/1/0/yes/no/on/off)
+  --terminal-app <path|name>      Specific terminal app to use
 
 OPTIONS FOR --add:
   --name <name>       Model name (required)
@@ -109,6 +111,47 @@ CONFIG:
 
 For more information, visit: https://github.com/Connorbelez/cclauncher
 `.trim();
+
+const TRUE_VALUES = new Set(["true", "1", "yes", "y", "on"]);
+const FALSE_VALUES = new Set(["false", "0", "no", "n", "off"]);
+
+function parseBooleanFlag(value: string | undefined): boolean | null {
+	const normalized = value?.trim().toLowerCase();
+	if (!normalized) return null;
+	if (TRUE_VALUES.has(normalized)) return true;
+	if (FALSE_VALUES.has(normalized)) return false;
+	return null;
+}
+
+function getShebangCommand(filePath: string): string[] | null {
+	try {
+		const contents = fs.readFileSync(filePath, "utf8");
+		const [firstLine] = contents.split(/\r?\n/, 1);
+		if (!firstLine?.startsWith("#!")) return null;
+		const shebang = firstLine.slice(2).trim();
+		if (!shebang) return null;
+		return shebang.split(/\s+/);
+	} catch {
+		return null;
+	}
+}
+
+function getScriptSpawnArgs(scriptExecution: ScriptExecution): string[] {
+	if (scriptExecution.kind === "command") {
+		return ["/bin/sh", "-lc", scriptExecution.command];
+	}
+
+	try {
+		fs.accessSync(scriptExecution.resolvedPath, fs.constants.X_OK);
+		return [scriptExecution.resolvedPath];
+	} catch {
+		const shebang = getShebangCommand(scriptExecution.resolvedPath);
+		if (shebang) {
+			return [...shebang, scriptExecution.resolvedPath];
+		}
+		return ["/bin/sh", scriptExecution.resolvedPath];
+	}
+}
 
 /**
  * Parse an argv-style list of strings into a CliCommand describing the requested CLI action.
@@ -202,6 +245,19 @@ function constructCommand(
 	if (flags.has("run-script")) return { type: "run-script" };
 
 	if (flags.has("project-config")) {
+		let spawnInTerminal: boolean | undefined;
+		if (flags.has("spawn-in-terminal")) {
+			const parsed = parseBooleanFlag(flags.get("spawn-in-terminal"));
+			if (parsed === null) {
+				return {
+					type: "error",
+					message:
+						'--spawn-in-terminal expects a boolean value (true/false/1/0/yes/no/on/off)',
+				};
+			}
+			spawnInTerminal = parsed;
+		}
+
 		if (
 			flags.has("set-script") ||
 			flags.has("spawn-in-terminal") ||
@@ -210,9 +266,7 @@ function constructCommand(
 			return {
 				type: "project-config-set",
 				scriptPath: flags.get("set-script"),
-				spawnInTerminal: flags.has("spawn-in-terminal")
-					? flags.get("spawn-in-terminal") === "true"
-					: undefined,
+				spawnInTerminal,
 				terminalApp: flags.get("terminal-app"),
 			};
 		}
@@ -352,23 +406,33 @@ async function handleListWorktreesCommand(): Promise<number> {
 }
 
 async function runSetupScript(
+	projectRoot: string,
 	worktreePath: string,
 	scriptPath: string,
 	spawnInTerminal = false,
 	terminalApp?: string
 ): Promise<boolean> {
-	const absoluteScriptPath = path.resolve(worktreePath, scriptPath);
-	if (!fs.existsSync(absoluteScriptPath)) {
-		console.error(`Error: Setup script not found at ${absoluteScriptPath}`);
+	const scriptExecution = resolveScriptExecution(projectRoot, scriptPath);
+	if (!scriptExecution.raw) {
+		console.error("Error: Setup script not configured.");
+		return false;
+	}
+	if (
+		scriptExecution.kind === "file" &&
+		!fs.existsSync(scriptExecution.resolvedPath)
+	) {
+		console.error(
+			`Error: Setup script not found at ${scriptExecution.resolvedPath}`
+		);
 		return false;
 	}
 
-	console.log(`Running setup script: ${scriptPath}`);
+	console.log(`Running setup script: ${scriptExecution.raw}`);
 
 	if (spawnInTerminal) {
 		const success = await launchExternalTerminal(
 			worktreePath,
-			scriptPath,
+			scriptExecution,
 			terminalApp
 		);
 		if (!success) {
@@ -383,19 +447,48 @@ async function runSetupScript(
 			".cclauncher",
 			"setup_done"
 		);
+		const timeoutMs = 10 * 60 * 1000;
 		return new Promise((resolve) => {
 			const interval = setInterval(() => {
 				if (fs.existsSync(markerFile)) {
 					clearInterval(interval);
-					fs.unlinkSync(markerFile); // Clean up
-					resolve(true);
+					clearTimeout(timeout);
+
+					let exitCodeFromMarker: number | null = null;
+					try {
+						const content = fs.readFileSync(markerFile, "utf8").trim();
+						const parsed = Number.parseInt(content, 10);
+						exitCodeFromMarker = Number.isNaN(parsed) ? null : parsed;
+					} catch (err) {
+						console.error(
+							`Failed to read setup marker file: ${err instanceof Error ? err.message : String(err)}`
+						);
+					}
+
+					try {
+						fs.unlinkSync(markerFile); // Clean up
+					} catch (err) {
+						console.error(
+							`Failed to cleanup marker file: ${err instanceof Error ? err.message : String(err)}`
+						);
+					}
+
+					resolve(exitCodeFromMarker === 0);
 				}
 			}, 1000);
+
+			const timeout = setTimeout(() => {
+				clearInterval(interval);
+				console.error(
+					`Error: Setup script timed out after ${Math.round(timeoutMs / 60000)} minutes.`
+				);
+				resolve(false);
+			}, timeoutMs);
 		});
 	}
 
 	try {
-		const proc = Bun.spawn(["bash", scriptPath], {
+		const proc = Bun.spawn(getScriptSpawnArgs(scriptExecution), {
 			cwd: worktreePath,
 			stdout: "inherit",
 			stderr: "inherit",
@@ -439,6 +532,7 @@ async function handleCreateWorktreeCommand(
 
 	if (projectConfig?.postWorktreeScript) {
 		const success = await runSetupScript(
+			repoRoot,
 			worktreePath,
 			projectConfig.postWorktreeScript,
 			projectConfig.spawnInTerminal,
@@ -465,8 +559,13 @@ async function handleCreateWorktreeCommand(
 	return launchResult.exitCode;
 }
 
-function handleShowProjectConfig(): number {
-	const repoRoot = process.cwd(); // Assume current dir for project config
+async function handleShowProjectConfig(): Promise<number> {
+	const repoRoot = await getGitRepoRoot();
+	if (!repoRoot) {
+		console.error("Error: Not in a git repository.");
+		return 1;
+	}
+
 	const result = getProjectConfig(repoRoot);
 
 	if (!result.ok) {
@@ -482,12 +581,16 @@ function handleShowProjectConfig(): number {
 	return 0;
 }
 
-function handleSetProjectConfig(
+async function handleSetProjectConfig(
 	scriptPath?: string,
 	spawnInTerminal?: boolean,
 	terminalApp?: string
-): number {
-	const repoRoot = process.cwd();
+): Promise<number> {
+	const repoRoot = await getGitRepoRoot();
+	if (!repoRoot) {
+		console.error("Error: Not in a git repository.");
+		return 1;
+	}
 	const result = getProjectConfig(repoRoot);
 
 	if (!result.ok) {
@@ -511,7 +614,12 @@ function handleSetProjectConfig(
 }
 
 async function handleRunScript(): Promise<number> {
-	const repoRoot = process.cwd();
+	const repoRoot = await getGitRepoRoot();
+	if (!repoRoot) {
+		console.error("Error: Not in a git repository.");
+		return 1;
+	}
+
 	const result = getProjectConfig(repoRoot);
 
 	if (!result.ok) {
@@ -526,6 +634,7 @@ async function handleRunScript(): Promise<number> {
 	}
 
 	const success = await runSetupScript(
+		repoRoot,
 		repoRoot,
 		config.postWorktreeScript,
 		config.spawnInTerminal,
@@ -613,9 +722,9 @@ export async function executeCommand(command: CliCommand): Promise<number> {
 		case "worktree-list":
 			return await handleListWorktreesCommand();
 		case "project-config-show":
-			return handleShowProjectConfig();
+			return await handleShowProjectConfig();
 		case "project-config-set":
-			return handleSetProjectConfig(
+			return await handleSetProjectConfig(
 				command.scriptPath,
 				command.spawnInTerminal,
 				command.terminalApp

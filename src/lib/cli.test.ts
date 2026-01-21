@@ -183,6 +183,117 @@ describe("parseArgs", () => {
 		});
 	});
 
+	describe("Worktree commands", () => {
+		it("should return worktree type for --worktree flag", () => {
+			const result = parseArgs(["--worktree"]);
+			expect(result).toEqual({ type: "worktree", modelName: undefined });
+		});
+
+		it("should return worktree type with positional model", () => {
+			const result = parseArgs(["--worktree", "demo"]);
+			expect(result).toEqual({ type: "worktree", modelName: "demo" });
+		});
+
+		it("should return worktree type with --model value", () => {
+			const result = parseArgs(["-w", "--model", "demo"]);
+			expect(result).toEqual({ type: "worktree", modelName: "demo" });
+		});
+
+		it("should return worktree-list type for --worktree-list", () => {
+			const result = parseArgs(["--worktree-list"]);
+			expect(result).toEqual({ type: "worktree-list" });
+		});
+	});
+
+	describe("Project config commands", () => {
+		it("should return project-config-show for --project-config", () => {
+			const result = parseArgs(["--project-config"]);
+			expect(result).toEqual({ type: "project-config-show" });
+		});
+
+		it("should return project-config-set for --set-script", () => {
+			const result = parseArgs([
+				"--project-config",
+				"--set-script",
+				"./setup.sh",
+			]);
+			expect(result).toEqual({
+				type: "project-config-set",
+				scriptPath: "./setup.sh",
+				spawnInTerminal: undefined,
+				terminalApp: undefined,
+			});
+		});
+
+		it("should parse spawn-in-terminal true values", () => {
+			const result = parseArgs([
+				"--project-config",
+				"--spawn-in-terminal",
+				"yes",
+			]);
+			expect(result).toEqual({
+				type: "project-config-set",
+				scriptPath: undefined,
+				spawnInTerminal: true,
+				terminalApp: undefined,
+			});
+		});
+
+		it("should parse spawn-in-terminal false values", () => {
+			const result = parseArgs([
+				"--project-config",
+				"--spawn-in-terminal",
+				"0",
+			]);
+			expect(result).toEqual({
+				type: "project-config-set",
+				scriptPath: undefined,
+				spawnInTerminal: false,
+				terminalApp: undefined,
+			});
+		});
+
+		it("should treat spawn-in-terminal without value as true", () => {
+			const result = parseArgs(["--project-config", "--spawn-in-terminal"]);
+			expect(result).toEqual({
+				type: "project-config-set",
+				scriptPath: undefined,
+				spawnInTerminal: true,
+				terminalApp: undefined,
+			});
+		});
+
+		it("should return error for invalid spawn-in-terminal value", () => {
+			const result = parseArgs([
+				"--project-config",
+				"--spawn-in-terminal",
+				"maybe",
+			]);
+			expect(result.type).toBe("error");
+		});
+
+		it("should return project-config-set for --terminal-app", () => {
+			const result = parseArgs([
+				"--project-config",
+				"--terminal-app",
+				"Warp",
+			]);
+			expect(result).toEqual({
+				type: "project-config-set",
+				scriptPath: undefined,
+				spawnInTerminal: undefined,
+				terminalApp: "Warp",
+			});
+		});
+	});
+
+	describe("Run script command", () => {
+		it("should return run-script for --run-script", () => {
+			const result = parseArgs(["--run-script"]);
+			expect(result).toEqual({ type: "run-script" });
+		});
+	});
+
 	describe("Flag parsing edge cases", () => {
 		it("should handle flags in any order", () => {
 			const result = parseArgs([

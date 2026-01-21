@@ -191,9 +191,21 @@ export function saveProjectConfig(
 
 	const projects = readResult.data;
 
-	// If the config has a script, save it; otherwise remove the project entry
-	if (config.postWorktreeScript) {
-		projects[projectPath] = validation.data;
+	const normalizedConfig = { ...validation.data };
+	if (
+		normalizedConfig.postWorktreeScript !== undefined &&
+		!normalizedConfig.postWorktreeScript.trim()
+	) {
+		delete normalizedConfig.postWorktreeScript;
+	}
+
+	const hasConfigValues =
+		normalizedConfig.postWorktreeScript !== undefined ||
+		normalizedConfig.spawnInTerminal !== undefined ||
+		normalizedConfig.terminalApp !== undefined;
+
+	if (hasConfigValues) {
+		projects[projectPath] = normalizedConfig;
 	} else {
 		delete projects[projectPath];
 	}

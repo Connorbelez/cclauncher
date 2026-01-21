@@ -54,6 +54,14 @@ export interface ExtendedLaunchOptions extends LaunchOptions {
  * - autoAccept: --dangerously-skip-permissions
  * - acceptEdits: --permission-mode acceptEdits
  *
+ * Security warning:
+ * - The `autoAccept` mode uses `--dangerously-skip-permissions`, which bypasses
+ *   all permission checks.
+ * - Do not use this mode with untrusted prompts, in untrusted directories, or
+ *   when launching multiple instances that may operate on untrusted content.
+ * - Only use `autoAccept` in fully trusted environments where you understand
+ *   and accept the risk of granting unrestricted access to your files and tools.
+ *
  * @param options - Multi-launch options with prompt and permission mode
  * @returns Array of CLI arguments to pass to claude command
  */
@@ -82,6 +90,10 @@ export function buildCliArgs(options: MultiLaunchOptions): string[] {
 	}
 
 	return args;
+}
+
+function toShellSingleQuote(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -310,13 +322,7 @@ export async function launchClaudeCodeBackground(
 
 	// Build the claude command with arguments
 	const claudeCommand = ["claude", ...cliArgs]
-		.map((arg) => {
-			// Escape single quotes in arguments for shell
-			if (arg.includes("'") || arg.includes(" ") || arg.includes('"')) {
-				return `'${arg.replace(/'/g, "'\\''")}'`;
-			}
-			return arg;
-		})
+		.map((arg) => toShellSingleQuote(arg))
 		.join(" ");
 
 	const ensureLauncherDir = (basePath: string): string => {
@@ -341,7 +347,7 @@ export async function launchClaudeCodeBackground(
 				key === "API_TIMEOUT_MS"
 		)
 		.map(
-			([key, value]) => `export ${key}='${value?.replace(/'/g, "'\\''") ?? ""}'`
+			([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`
 		)
 		.join("\n");
 

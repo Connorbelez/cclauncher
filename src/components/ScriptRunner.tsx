@@ -3,7 +3,7 @@ import path from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { resolveScriptPath } from "@/lib/projectStore";
+import { resolveScriptExecution } from "@/lib/scriptExecution";
 import { theme } from "@/theme";
 import { logger } from "@/utils/logger";
 import { SpinnerWithElapsed } from "./Spinner";
@@ -58,7 +58,11 @@ export function ScriptRunner({
 
 	const hasRunRef = useRef(false);
 
-	const absoluteScriptPath = resolveScriptPath(projectPath, scriptPath);
+	const scriptExecution = resolveScriptExecution(projectPath, scriptPath);
+	const scriptIdentifier =
+		scriptExecution.kind === "file"
+			? scriptExecution.resolvedPath
+			: scriptExecution.command;
 
 	// Run the script on mount
 	useEffect(() => {
@@ -78,7 +82,7 @@ export function ScriptRunner({
 
 				const success = await launchExternalTerminal(
 					workingDirectory,
-					absoluteScriptPath,
+					scriptExecution,
 					terminalApp
 				);
 
@@ -102,6 +106,15 @@ export function ScriptRunner({
 					if (fs.existsSync(markerFile)) {
 						if (watcherRef.current) clearInterval(watcherRef.current);
 
+						let exitCodeFromMarker: number | null = null;
+						try {
+							const content = fs.readFileSync(markerFile, "utf8").trim();
+							const parsed = Number.parseInt(content, 10);
+							exitCodeFromMarker = Number.isNaN(parsed) ? null : parsed;
+						} catch (err) {
+							logger.error(`Failed to read marker file ${markerFile}`, err);
+						}
+
 						// Cleanup marker
 						try {
 							fs.unlinkSync(markerFile);
@@ -110,19 +123,54 @@ export function ScriptRunner({
 						}
 
 						if (!isCancelled) {
-							setState("success");
-							setSuccessDelay(true);
+							if (exitCodeFromMarker === 0) {
+								setState("success");
+								setSuccessDelay(true);
+							} else {
+								setExitCode(exitCodeFromMarker ?? -1);
+								setState("error");
+							}
 						}
 					}
 				}, 500);
 			} else {
 				// Internal execution (existing logic)
 				try {
-					const proc = Bun.spawn(["sh", "-c", absoluteScriptPath], {
-						cwd: workingDirectory,
-						stdio: ["ignore", "pipe", "pipe"],
-						env: { ...process.env, FORCE_COLOR: "1" },
-					});
+					if (!scriptIdentifier) {
+						setExitCode(-1);
+						setState("error");
+						setOutput((p) => [
+							...p,
+							"Script not configured.",
+						]);
+						return;
+					}
+
+					if (
+						scriptExecution.kind === "file" &&
+						!fs.existsSync(scriptExecution.resolvedPath)
+					) {
+						setExitCode(-1);
+						setState("error");
+						setOutput((p) => [
+							...p,
+							`Script not found: ${scriptExecution.resolvedPath}`,
+						]);
+						return;
+					}
+
+					const proc =
+						scriptExecution.kind === "file"
+							? Bun.spawn(["bash", scriptExecution.resolvedPath], {
+									cwd: workingDirectory,
+									stdio: ["ignore", "pipe", "pipe"],
+									env: { ...process.env, FORCE_COLOR: "1" },
+								})
+							: Bun.spawn(["bash", "-lc", scriptExecution.command], {
+									cwd: workingDirectory,
+									stdio: ["ignore", "pipe", "pipe"],
+									env: { ...process.env, FORCE_COLOR: "1" },
+								});
 
 					procRef.current = proc;
 
@@ -185,7 +233,13 @@ export function ScriptRunner({
 				clearInterval(watcherRef.current);
 			}
 		};
-	}, [absoluteScriptPath, workingDirectory, spawnInTerminal, terminalApp]);
+	}, [
+		scriptExecution.kind,
+		scriptIdentifier,
+		workingDirectory,
+		spawnInTerminal,
+		terminalApp,
+	]);
 
 	// Auto-proceed after success delay
 	useEffect(() => {

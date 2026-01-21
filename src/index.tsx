@@ -547,13 +547,18 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		);
 		launchClaudeCode(storeModel, {
 			cwd: scriptRunnerState.worktreePath,
-		}).then((result) => {
-			if (!result.ok) {
-				console.error(`\nError: ${result.message}`);
+		})
+			.then((result) => {
+				if (!result.ok) {
+					console.error(`\nError: ${result.message}`);
+					process.exit(1);
+				}
+				process.exit(result.exitCode);
+			})
+			.catch((error) => {
+				console.error("\nUnexpected error launching Claude Code:", error);
 				process.exit(1);
-			}
-			process.exit(result.exitCode);
-		});
+			});
 	}, [renderer, scriptRunnerState, selectedModel]);
 
 	// Handle script runner abort
