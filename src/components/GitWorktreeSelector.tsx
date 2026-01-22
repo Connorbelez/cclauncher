@@ -1,6 +1,6 @@
 import type { SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import type { WorktreeInfo } from "@/lib/git";
 import { getDefaultBranch, mergeWorktreeIntoDefault } from "@/lib/git";
@@ -141,6 +141,10 @@ export function GitWorktreeSelector({
 		message: string;
 	} | null>(null);
 	const [defaultBranch, setDefaultBranch] = useState("main");
+	const [refreshStatus, setRefreshStatus] = useState<
+		"idle" | "refreshing" | "success"
+	>("idle");
+	const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Fetch default branch once
 	useEffect(() => {
@@ -187,6 +191,35 @@ export function GitWorktreeSelector({
 		setViewMode("worktrees");
 	}, []);
 
+	const handleRefresh = useCallback(async () => {
+		if (refreshStatus === "refreshing") {
+			return;
+		}
+		setRefreshStatus("refreshing");
+		if (refreshTimeoutRef.current) {
+			clearTimeout(refreshTimeoutRef.current);
+			refreshTimeoutRef.current = null;
+		}
+		try {
+			await onRefresh();
+		} finally {
+			setRefreshStatus("success");
+			refreshTimeoutRef.current = setTimeout(() => {
+				setRefreshStatus("idle");
+				refreshTimeoutRef.current = null;
+			}, 1200);
+		}
+	}, [onRefresh, refreshStatus]);
+
+	useEffect(() => {
+		return () => {
+			if (refreshTimeoutRef.current) {
+				clearTimeout(refreshTimeoutRef.current);
+				refreshTimeoutRef.current = null;
+			}
+		};
+	}, []);
+
 	useKeyboard((key) => {
 		if (!isFocused) {
 			return;
@@ -211,7 +244,7 @@ export function GitWorktreeSelector({
 
 		// Refresh worktree list
 		if (key.name === "r") {
-			onRefresh();
+			handleRefresh();
 			return;
 		}
 
@@ -283,6 +316,12 @@ export function GitWorktreeSelector({
 
 	const isActive = isFocused;
 	const borderColor = theme.colors.primary;
+	const refreshSuffix =
+		refreshStatus === "refreshing"
+			? " ⟳ Refreshing..."
+			: refreshStatus === "success"
+				? " ✓ Refreshed"
+				: "";
 
 	// Empty state: no worktrees at all (shouldn't happen - main always exists)
 	if (worktrees.length === 0) {
@@ -299,7 +338,7 @@ export function GitWorktreeSelector({
 						viewportOptions: { backgroundColor: theme.colors.background },
 						contentOptions: { backgroundColor: theme.colors.background },
 					}}
-					title={`Worktrees · ${selectedModelName}`}
+					title={`Worktrees · ${selectedModelName}${refreshSuffix}`}
 				>
 					<box flexDirection="column" gap={1} padding={1}>
 						<text style={{ fg: theme.colors.text.secondary }}>
@@ -335,7 +374,7 @@ export function GitWorktreeSelector({
 						},
 					},
 				}}
-				title={`Worktrees (${worktrees.length}) · ${selectedModelName}${hasSetupScript ? " ⚡" : ""}${selectedWorktree && !selectedWorktree.isMain && selectedWorktree.isMergeable !== false ? " [m] Merge" : ""}`}
+				title={`Worktrees (${worktrees.length}) · ${selectedModelName}${hasSetupScript ? " ⚡" : ""}${selectedWorktree && !selectedWorktree.isMain && selectedWorktree.isMergeable !== false ? " [m] Merge" : ""}${refreshSuffix}`}
 			>
 				<select
 					focused={isFocused}

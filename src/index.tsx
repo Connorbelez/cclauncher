@@ -717,8 +717,8 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 
 	// Use conditional focus order? No, focus order remains the same logically.
 	const focusOrder = isGitRepo
-		? ["model_selection", "worktree_selection", "new_model"]
-		: ["model_selection", "new_model"];
+		? ["model_selection", "worktree_selection"]
+		: ["model_selection"];
 
 	// Show script runner when active
 	if (scriptRunnerState?.active && gitRepoRoot) {
@@ -756,7 +756,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 
 				{/* Main Content Area */}
 				<box
-					alignItems={isSmallScreen ? "stretch" : "flex-start"}
+					alignItems="stretch"
 					flexDirection={isSmallScreen ? "column" : "row"}
 					flexGrow={1}
 					gap={1}

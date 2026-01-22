@@ -524,9 +524,16 @@ export async function getDetachedOriginalBranch(
 			const output = await new Response(branchProc.stdout).text();
 			const branches = output.trim().split("\n").filter(Boolean);
 			if (branches.length > 0) {
-				// Prefer 'main' or 'master' if available, otherwise first one
+				// Prefer a non-main branch when multiple branches contain the commit.
 				const mainBranch = branches.find((b) => b === "main" || b === "master");
-				return mainBranch || branches[0] || null;
+				const nonMainBranch = branches.find(
+					(b) => b !== "main" && b !== "master"
+				);
+				const selected =
+					(nonMainBranch && branches.length > 1
+						? nonMainBranch
+						: mainBranch) || branches[0] || null;
+				return selected;
 			}
 		}
 

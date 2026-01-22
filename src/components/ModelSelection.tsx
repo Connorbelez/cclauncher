@@ -205,7 +205,11 @@ export function ModelSelection(props: ModelSelectionProps) {
 	}
 
 	return (
-		<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
+		<box
+			flexDirection="column"
+			flexGrow={1}
+			style={{ width: "100%", height: "100%" }}
+		>
 			<scrollbox
 				style={{
 					width: "100%",
