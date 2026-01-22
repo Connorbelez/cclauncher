@@ -1,6 +1,7 @@
 import fs, { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getSetupMarkerPath } from "@/utils/launchTempDir";
 import { launchExternalTerminal } from "../utils/terminalLauncher";
 import { resolveScriptExecution, type ScriptExecution } from "./scriptExecution";
 import {
@@ -442,11 +443,7 @@ async function runSetupScript(
 		console.log("Waiting for external setup script to complete...");
 
 		// Poll for marker file
-		const markerFile = path.join(
-			worktreePath,
-			".cclauncher",
-			"setup_done"
-		);
+		const markerFile = getSetupMarkerPath(worktreePath);
 		const timeoutMs = 10 * 60 * 1000;
 		return new Promise((resolve) => {
 			const interval = setInterval(() => {

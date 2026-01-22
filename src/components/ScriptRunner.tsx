@@ -5,6 +5,7 @@ import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveScriptExecution } from "@/lib/scriptExecution";
 import { theme } from "@/theme";
+import { getSetupMarkerPath } from "@/utils/launchTempDir";
 import { logger } from "@/utils/logger";
 import { SpinnerWithElapsed } from "./Spinner";
 
@@ -95,11 +96,7 @@ export function ScriptRunner({
 				}
 
 				// Start polling for completion marker
-				const markerFile = path.join(
-					workingDirectory,
-					".cclauncher",
-					"setup_done"
-				);
+				const markerFile = getSetupMarkerPath(workingDirectory);
 
 				// Poll every 500ms
 				watcherRef.current = setInterval(() => {

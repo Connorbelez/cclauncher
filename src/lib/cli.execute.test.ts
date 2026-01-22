@@ -1,51 +1,56 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const hasViMock = typeof vi?.mock === "function";
+const runDescribe = hasViMock ? describe : describe.skip;
+
 const getGitRepoRoot = vi.fn();
 const listWorktrees = vi.fn();
 const getProjectConfig = vi.fn();
 const saveProjectConfig = vi.fn();
 const launchClaudeCode = vi.fn();
 
-vi.mock("./git", () => ({
-	getGitRepoRoot,
-	listWorktrees,
-	generateWorktreePath: vi.fn(),
-	createDetachedWorktree: vi.fn(),
-}));
+if (hasViMock) {
+	vi.mock("./git", () => ({
+		getGitRepoRoot,
+		listWorktrees,
+		generateWorktreePath: vi.fn(),
+		createDetachedWorktree: vi.fn(),
+	}));
 
-vi.mock("./projectStore", () => ({
-	getProjectConfig,
-	saveProjectConfig,
-}));
+	vi.mock("./projectStore", () => ({
+		getProjectConfig,
+		saveProjectConfig,
+	}));
 
-vi.mock("./launcher", () => ({
-	formatModelInfo: vi.fn(),
-	launchClaudeCode,
-}));
+	vi.mock("./launcher", () => ({
+		formatModelInfo: vi.fn(),
+		launchClaudeCode,
+	}));
 
-vi.mock("./store", () => ({
-	getStorePath: () => "/tmp/store",
-	getDefaultModel: vi.fn(),
-	getModel: vi.fn(),
-	getModelList: vi.fn(),
-	saveModel: vi.fn(),
-}));
+	vi.mock("./store", () => ({
+		getStorePath: () => "/tmp/store",
+		getDefaultModel: vi.fn(),
+		getModel: vi.fn(),
+		getModelList: vi.fn(),
+		saveModel: vi.fn(),
+	}));
 
-vi.mock("./scriptExecution", () => ({
-	resolveScriptExecution: vi.fn(() => ({
-		kind: "command",
-		command: "echo ok",
-		raw: "echo ok",
-	})),
-}));
+	vi.mock("./scriptExecution", () => ({
+		resolveScriptExecution: vi.fn(() => ({
+			kind: "command",
+			command: "echo ok",
+			raw: "echo ok",
+		})),
+	}));
 
-vi.mock("../utils/terminalLauncher", () => ({
-	launchExternalTerminal: vi.fn(() => Promise.resolve(true)),
-}));
+	vi.mock("../utils/terminalLauncher", () => ({
+		launchExternalTerminal: vi.fn(() => Promise.resolve(true)),
+	}));
+}
 
 import { executeCommand } from "./cli";
 
-describe("executeCommand", () => {
+runDescribe("executeCommand", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});

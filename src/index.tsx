@@ -1,6 +1,6 @@
 import { createCliRenderer, type SelectOption } from "@opentui/core";
 import { createRoot, useRenderer } from "@opentui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitWorktreeSelector } from "./components/GitWorktreeSelector";
 import { Header } from "./components/Header";
 import { ModelDetails } from "./components/ModelDetails";
@@ -26,9 +26,10 @@ import {
 	launchClaudeCodeBackground,
 	type MultiLaunchOptions,
 } from "./lib/launcher";
-import { getProjectConfig } from "./lib/projectStore";
+import { getProjectConfig, saveProjectConfig } from "./lib/projectStore";
 import {
 	deleteModel as deleteModelFromStore,
+	getModel,
 	getModelList,
 	type Model,
 	type ModelsJson,
@@ -196,6 +197,12 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		SelectOption[] | null
 	>(null);
 	const [pendingUseWorktree, setPendingUseWorktree] = useState(false);
+	const projectTerminalApp = useMemo(() => {
+		if (!gitRepoRoot || !showPreLaunchDialog) return undefined;
+		const result = getProjectConfig(gitRepoRoot);
+		return result.ok ? result.data?.terminalApp : undefined;
+	}, [gitRepoRoot, showPreLaunchDialog]);
+
 
 	const renderer = useRenderer();
 	const isGitRepo = gitRepoRoot !== null;
@@ -349,10 +356,12 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 				const lookupName = originalName ?? model.name;
 				const existingIndex = prev.findIndex((m) => m.name === lookupName);
 				const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
+				const maxOrder = Math.max(0, ...prev.map((m) => m.order ?? 0));
 				const order =
 					existing?.order ??
 					prev.find((m) => m.name === model.name)?.order ??
-					model.order;
+					model.order ??
+					maxOrder + 1;
 				const updatedModel = { ...model, order };
 				let next: (SelectOption & { order?: number })[];
 
@@ -395,6 +404,24 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 			return result;
 		},
 		[setModelsState, setSelectedModel, setSelectedModelIds]
+	);
+
+	const handleCreateModel = useCallback(
+		(
+			model: { name: string; description?: string; order?: number; value: Record<string, unknown> },
+			options?: { allowOverwrite?: boolean }
+		) => {
+			const result = handleSaveModel(model as unknown as SelectOption, undefined, options);
+			if (!result.ok) return result;
+
+			// Ensure selected model has the saved/normalized value from store (order assignment, defaults, etc.)
+			const saved = getModel(model.name);
+			if (saved.ok) {
+				setSelectedModel(modelToSelectOption(saved.data));
+			}
+			return result;
+		},
+		[handleSaveModel]
 	);
 
 	const handleMoveModel = useCallback(
@@ -677,6 +704,25 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 			setShowPreLaunchDialog(false);
 			setLaunching(true);
 
+			if (gitRepoRoot) {
+				const configResult = getProjectConfig(gitRepoRoot);
+				if (configResult.ok) {
+					const existing = configResult.data ?? {};
+					const normalizedTerminalApp =
+						options.terminalApp?.trim() || undefined;
+					const saveResult = saveProjectConfig(gitRepoRoot, {
+						postWorktreeScript: existing.postWorktreeScript,
+						spawnInTerminal: existing.spawnInTerminal,
+						terminalApp: normalizedTerminalApp,
+					});
+					if (!saveResult.ok) {
+						console.error(
+							`Failed to persist terminal selection: ${saveResult.message}`
+						);
+					}
+				}
+			}
+
 			// Exit TUI before spawning Claude Code instances
 			renderer.destroy();
 			resetTerminalForChild();
@@ -846,7 +892,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						selectedModelIds={selectedModelIds}
 					/>
 					<ModelDetails model={selectedModel} onSave={handleSaveModel} />
-					<NewModelForm />
+					<NewModelForm onSave={handleCreateModel} />
 					{isGitRepo && gitRepoRoot && (
 						<GitWorktreeSelector
 							gitRepoRoot={gitRepoRoot}
@@ -876,6 +922,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						isOpen={showPreLaunchDialog}
 						onCancel={handleMultiLaunchCancel}
 						onLaunch={executeMultiLaunch}
+						projectTerminalApp={projectTerminalApp}
 						selectedModels={pendingLaunchModels}
 						useWorktree={pendingUseWorktree}
 					/>
@@ -892,6 +939,7 @@ function PreLaunchDialogWrapper(props: {
 	isOpen: boolean;
 	selectedModels: SelectOption[];
 	useWorktree: boolean;
+	projectTerminalApp?: string;
 	onLaunch: (options: MultiLaunchOptions & { terminalApp?: string }) => void;
 	onCancel: () => void;
 }) {
@@ -920,6 +968,7 @@ function PreLaunchDialogWrapper(props: {
 			isOpen={props.isOpen}
 			onCancel={handleCancel}
 			onLaunch={props.onLaunch}
+			projectTerminalApp={props.projectTerminalApp}
 			selectedModels={props.selectedModels}
 			useWorktree={props.useWorktree}
 		/>

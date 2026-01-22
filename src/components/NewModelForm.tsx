@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { useFocusState } from "@/hooks/FocusProvider";
 import { theme } from "@/theme";
-import { type SaveModelResult, saveModelToFile } from "@/utils/models";
 import { ConfirmModal } from "./ConfirmModal";
 import { FormField } from "./FormField";
 
@@ -23,16 +22,36 @@ const newModelSchema = z.object({
 	}),
 });
 
+export type SaveModelResult =
+	| { ok: true }
+	| {
+			ok: false;
+			reason: "validation" | "duplicate" | "read" | "write";
+			message: string;
+	  };
+
+export interface NewModelFormProps {
+	onSave: (
+		model: {
+			name: string;
+			description?: string;
+			order?: number;
+			value: Record<string, unknown>;
+		},
+		options?: { allowOverwrite?: boolean }
+	) => SaveModelResult;
+}
+
 /**
  * Renders an interactive "Create New Model" form with keyboard navigation, validation, and save/overwrite confirmation flows.
  *
  * The component manages form state for model identity and Anthropica API configuration, prevents accidental exit when changes are pending,
- * validates input using the `newModelSchema`, and persists configurations via `saveModelToFile`. It also exposes keyboard shortcuts
+ * validates input using the `newModelSchema`, and persists configurations via the `onSave` callback. It also exposes keyboard shortcuts
  * for field navigation, submit (Enter) and cancel (Esc), and shows inline error messages when validation or save fails.
  *
  * @returns The form UI for creating a new model, or `null` when the form is not focused.
  */
-export function NewModelForm() {
+export function NewModelForm({ onSave }: NewModelFormProps) {
 	const {
 		isFocused,
 		setFocusedId,
@@ -112,10 +131,7 @@ export function NewModelForm() {
 				return { ok: false, reason: "validation", message };
 			}
 
-			const result = saveModelToFile(validatedModel.data, {
-				allowOverwrite,
-				setOrderIfMissing: true,
-			});
+			const result = onSave(validatedModel.data, { allowOverwrite });
 
 			if (!result.ok) {
 				if (result.reason !== "duplicate") {
@@ -139,7 +155,7 @@ export function NewModelForm() {
 			setFocusedId("model_selection");
 			return result;
 		},
-		[newModelName, newModelDescription, newModelValue, setFocusedId]
+		[newModelName, newModelDescription, newModelValue, onSave, setFocusedId]
 	);
 
 	const resetForm = useCallback(() => {

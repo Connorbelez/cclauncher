@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
 import { theme } from "@/theme";
 import { logDebug } from "@/lib/logger";
+import { ConfirmModal } from "./ConfirmModal";
 
 export interface ModelSelectionProps {
 	models: SelectOption[];
@@ -30,13 +31,28 @@ export interface ModelSelectionProps {
 }
 
 export function ModelSelection(props: ModelSelectionProps) {
-	const { isFocused, focusedId, isModalOpen, inPreLaunchDialog } =
+	const { isFocused, focusedId, isModalOpen, inPreLaunchDialog, setModalOpen } =
 		useFocusState("model_selection");
 
 	logDebug("ModelSelection render", { isFocused, focusedId, isModalOpen });
 
-	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 	const [worktreeMode, setWorktreeMode] = useState(false);
+
+	const openDeleteConfirm = useCallback(() => {
+		setIsDeleteConfirmOpen(true);
+		setModalOpen(true);
+	}, [setModalOpen]);
+
+	const closeDeleteConfirm = useCallback(() => {
+		setIsDeleteConfirmOpen(false);
+		setModalOpen(false);
+	}, [setModalOpen]);
+
+	const confirmDelete = useCallback(() => {
+		props.onDelete?.(props.selectedModel);
+		closeDeleteConfirm();
+	}, [props, closeDeleteConfirm]);
 
 	const selectedIndex = useMemo(() => {
 		const index = props.models.findIndex(
@@ -122,10 +138,10 @@ export function ModelSelection(props: ModelSelectionProps) {
 					setWorktreeMode(false);
 				}
 			} else if (name === "d" && !props.moveMode && props.onDelete) {
-				setConfirmDelete(true);
+				openDeleteConfirm();
 			}
 		},
-		[props, worktreeMode, isFocused]
+		[props, worktreeMode, isFocused, openDeleteConfirm]
 	);
 
 	const handleKeyboard = useCallback(
@@ -141,16 +157,6 @@ export function ModelSelection(props: ModelSelectionProps) {
 			}
 			const name = key.name || "";
 
-			if (confirmDelete) {
-				if (name === "y" || name === "return") {
-					props.onDelete?.(props.selectedModel);
-					setConfirmDelete(false);
-				} else if (name === "n" || name === "escape") {
-					setConfirmDelete(false);
-				}
-				return;
-			}
-
 			if (handleMoveKeys(name)) {
 				return;
 			}
@@ -160,10 +166,8 @@ export function ModelSelection(props: ModelSelectionProps) {
 			isFocused,
 			isModalOpen,
 			inPreLaunchDialog,
-			confirmDelete,
 			handleMoveKeys,
 			handleActionKeys,
-			props,
 		]
 	);
 
@@ -205,11 +209,12 @@ export function ModelSelection(props: ModelSelectionProps) {
 	}
 
 	return (
-		<box
-			flexDirection="column"
-			flexGrow={1}
-			style={{ width: "100%", height: "100%" }}
-		>
+		<>
+			<box
+				flexDirection="column"
+				flexGrow={1}
+				style={{ width: "100%", height: "100%" }}
+			>
 			<scrollbox
 				style={{
 					width: "100%",
@@ -256,6 +261,17 @@ export function ModelSelection(props: ModelSelectionProps) {
 					}}
 				/>
 			</scrollbox>
-		</box>
+			</box>
+
+			<ConfirmModal
+				cancelLabel="Cancel"
+				confirmLabel="Delete"
+				isOpen={isDeleteConfirmOpen}
+				message={`Delete model "${props.selectedModel.name}"? This cannot be undone.`}
+				onCancel={closeDeleteConfirm}
+				onConfirm={confirmDelete}
+				title="Delete Model"
+			/>
+		</>
 	);
 }

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ScriptExecution } from "@/lib/scriptExecution";
+import { getLaunchTempDir, getSetupMarkerPath } from "@/utils/launchTempDir";
 import { logger } from "./logger";
 
 export interface SystemTerminal {
@@ -52,19 +53,9 @@ export async function launchExternalTerminal(
 ): Promise<boolean> {
 	const platform = os.platform();
 
-	const ensureLauncherDir = (basePath: string): string => {
-		const launcherDir = path.join(basePath, ".cclauncher");
-		if (!fs.existsSync(launcherDir)) {
-			fs.mkdirSync(launcherDir, { recursive: true });
-		}
-		return launcherDir;
-	};
-
-	const launcherDir = ensureLauncherDir(cwd);
-
 	// Create a wrapper script that runs the user script and signals completion
-	const markerFile = path.join(launcherDir, "setup_done");
-	const wrapperScriptPath = path.join(launcherDir, "setup_wrapper.sh");
+	const markerFile = getSetupMarkerPath(cwd);
+	const wrapperScriptPath = path.join(getLaunchTempDir(cwd), "setup_wrapper.sh");
 
 	// Ensure marker is gone
 	if (fs.existsSync(markerFile)) {
