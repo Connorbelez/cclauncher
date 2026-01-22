@@ -211,33 +211,38 @@ export function NewModelForm() {
 
 	return (
 		<>
-			<scrollbox
-				style={{
-					width: "100%",
-					flexGrow: 1,
-					border: true,
-					borderStyle: "rounded",
-					borderColor: theme.colors.primary,
-					rootOptions: {
-						backgroundColor: theme.colors.surface,
-					},
-					viewportOptions: {
-						backgroundColor: theme.colors.background,
-					},
-					contentOptions: {
-						backgroundColor: theme.colors.background,
-					},
-					scrollbarOptions: {
-						showArrows: true,
-						trackOptions: {
-							foregroundColor: theme.colors.primary,
-							backgroundColor: theme.colors.border,
-						},
-					},
-				}}
-				title="Create New Model"
+			<box
+				flexDirection="column"
+				flexGrow={1}
+				style={{ width: "100%" }}
 			>
-				<box flexDirection="column" gap={1} padding={1}>
+				<scrollbox
+					style={{
+						width: "100%",
+						flexGrow: 1,
+						border: true,
+						borderStyle: "rounded",
+						borderColor: theme.colors.primary,
+						rootOptions: {
+							backgroundColor: theme.colors.surface,
+						},
+						viewportOptions: {
+							backgroundColor: theme.colors.background,
+						},
+						contentOptions: {
+							backgroundColor: theme.colors.background,
+						},
+						scrollbarOptions: {
+							showArrows: true,
+							trackOptions: {
+								foregroundColor: theme.colors.primary,
+								backgroundColor: theme.colors.border,
+							},
+						},
+					}}
+					title="Create New Model"
+				>
+					<box flexDirection="column" gap={1} padding={1}>
 					<text style={{ fg: theme.colors.text.secondary, marginBottom: 1 }}>
 						Fill in the details below to add a new model configuration.
 					</text>
@@ -412,8 +417,9 @@ export function NewModelForm() {
 							value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL}
 						/>
 					</box>
-				</box>
-			</scrollbox>
+					</box>
+				</scrollbox>
+			</box>
 			<ConfirmModal
 				cancelLabel="Cancel"
 				confirmLabel="Save"

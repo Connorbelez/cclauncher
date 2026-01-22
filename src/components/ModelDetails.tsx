@@ -302,28 +302,33 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 
 	return (
 		<>
-			<scrollbox
-				ref={scrollboxRef}
-				style={{
-					width: "100%",
-					flexGrow: 1,
-					border: true,
-					borderStyle: isActive ? "double" : "rounded",
-					borderColor,
-					rootOptions: { backgroundColor: theme.colors.surface },
-					viewportOptions: { backgroundColor: theme.colors.background },
-					contentOptions: { backgroundColor: theme.colors.background },
-					scrollbarOptions: {
-						showArrows: true,
-						trackOptions: {
-							foregroundColor: theme.colors.primary,
-							backgroundColor: theme.colors.border,
-						},
-					},
-				}}
-				title={editMode ? `Editing: ${model.name}` : "Model Details"}
+			<box
+				flexDirection="column"
+				flexGrow={1}
+				style={{ width: "100%", height: "100%" }}
 			>
-				<box flexDirection="column" gap={1} padding={1}>
+				<scrollbox
+					ref={scrollboxRef}
+					style={{
+						width: "100%",
+						flexGrow: 1,
+						border: true,
+						borderStyle: isActive ? "double" : "rounded",
+						borderColor,
+						rootOptions: { backgroundColor: theme.colors.surface },
+						viewportOptions: { backgroundColor: theme.colors.background },
+						contentOptions: { backgroundColor: theme.colors.background },
+						scrollbarOptions: {
+							showArrows: true,
+							trackOptions: {
+								foregroundColor: theme.colors.primary,
+								backgroundColor: theme.colors.border,
+							},
+						},
+					}}
+					title={editMode ? `Editing: ${model.name}` : "Model Details"}
+				>
+					<box flexDirection="column" gap={1} padding={1}>
 					{/* Header Section */}
 					<box flexDirection="column" marginBottom={1}>
 						<text
@@ -466,8 +471,9 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 							value={anthropicDefaultHaikuModel}
 						/>
 					</box>
-				</box>
-			</scrollbox>
+					</box>
+				</scrollbox>
+			</box>
 			<ConfirmModal
 				cancelLabel="Cancel"
 				confirmLabel="Save"
