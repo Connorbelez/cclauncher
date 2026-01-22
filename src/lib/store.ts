@@ -55,6 +55,46 @@ export type ModelValue = z.infer<typeof modelValueSchema>;
 export type Model = z.infer<typeof modelSchema>;
 export type ModelsJson = Record<string, Model>;
 
+function getDefaultModels(): ModelsJson {
+	const zAIName = "Z.ai GLM 4.7";
+	const miniMaxName = "MiniMax M2";
+
+	return {
+		[zAIName]: {
+			name: zAIName,
+			description: "Sample configuration (Z.ai GLM 4.7)",
+			order: 1,
+			value: {
+				ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic",
+				ANTHROPIC_AUTH_TOKEN: "token",
+				ANTHROPIC_MODEL: "glm-4.7",
+				ANTHROPIC_SMALL_FAST_MODEL: "glm-4.7",
+				ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+				ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+				ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+				API_TIMEOUT_MS: 3000000,
+				DISABLE_NONESSENTIAL_TRAFFIC: true,
+			},
+		},
+		[miniMaxName]: {
+			name: miniMaxName,
+			description: "Sample configuration (MiniMax M2)",
+			order: 2,
+			value: {
+				ANTHROPIC_BASE_URL: "https://api.minimax.io/anthropic",
+				ANTHROPIC_AUTH_TOKEN: "authtoken",
+				ANTHROPIC_MODEL: "MiniMax-M2",
+				ANTHROPIC_SMALL_FAST_MODEL: "MiniMax-M2",
+				ANTHROPIC_DEFAULT_SONNET_MODEL: "MiniMax-M2",
+				ANTHROPIC_DEFAULT_OPUS_MODEL: "MiniMax-M2",
+				ANTHROPIC_DEFAULT_HAIKU_MODEL: "MiniMax-M2",
+				API_TIMEOUT_MS: 3000000,
+				DISABLE_NONESSENTIAL_TRAFFIC: true,
+			},
+		},
+	};
+}
+
 export type StoreResult<T> =
 	| { ok: true; data: T }
 	| {
@@ -158,8 +198,12 @@ export function readModels(): StoreResult<ModelsJson> {
 
 	const storePath = getStorePath();
 	if (!fs.existsSync(storePath)) {
-		// Return empty object if file doesn't exist yet
-		return { ok: true, data: {} };
+		const defaults = getDefaultModels();
+		const writeResult = writeModels(defaults);
+		if (!writeResult.ok) {
+			return writeResult;
+		}
+		return { ok: true, data: defaults };
 	}
 
 	try {
@@ -201,6 +245,15 @@ export function readModels(): StoreResult<ModelsJson> {
 			) {
 				validatedData[key] = m;
 			}
+		}
+
+		if (Object.keys(validatedData).length === 0) {
+			const defaults = getDefaultModels();
+			const writeResult = writeModels(defaults);
+			if (!writeResult.ok) {
+				return writeResult;
+			}
+			return { ok: true, data: defaults };
 		}
 
 		return { ok: true, data: validatedData };

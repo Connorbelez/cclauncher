@@ -334,6 +334,69 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 		[]
 	);
 
+	const handleSaveModel = useCallback(
+		(
+			model: SelectOption,
+			originalName?: string,
+			options?: { allowOverwrite?: boolean }
+		): SaveModelResult => {
+			const result = saveModel(model, originalName, options);
+			if (!result.ok) {
+				return result;
+			}
+
+			setModelsState((prev) => {
+				const lookupName = originalName ?? model.name;
+				const existingIndex = prev.findIndex((m) => m.name === lookupName);
+				const existing = existingIndex >= 0 ? prev[existingIndex] : undefined;
+				const order =
+					existing?.order ??
+					prev.find((m) => m.name === model.name)?.order ??
+					model.order;
+				const updatedModel = { ...model, order };
+				let next: (SelectOption & { order?: number })[];
+
+				if (existingIndex >= 0) {
+					next = [...prev];
+					next[existingIndex] = updatedModel;
+					if (originalName && originalName !== model.name) {
+						next = next.filter(
+							(entry, index) => index === existingIndex || entry.name !== model.name
+						);
+					}
+				} else {
+					next = [...prev, updatedModel];
+				}
+
+				return next;
+			});
+
+			setSelectedModel((current) => {
+				if (current.name === (originalName ?? model.name)) {
+					return model;
+				}
+				if (current.name === model.name) {
+					return model;
+				}
+				return current;
+			});
+
+			setSelectedModelIds((prev) => {
+				if (!prev.size || !originalName || originalName === model.name) {
+					return prev;
+				}
+				const next = new Set(prev);
+				if (next.delete(originalName)) {
+					next.add(model.name);
+				}
+				return next;
+			});
+
+			return result;
+		},
+		[setModelsState, setSelectedModel, setSelectedModelIds]
+	);
+
 	const handleMoveModel = useCallback(
 		(fromIndex: number, direction: "up" | "down") => {
 			setModelsState((prev) => {
@@ -782,7 +845,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 						selectedModel={selectedModel}
 						selectedModelIds={selectedModelIds}
 					/>
-					<ModelDetails model={selectedModel} onSave={saveModel} />
+					<ModelDetails model={selectedModel} onSave={handleSaveModel} />
 					<NewModelForm />
 					{isGitRepo && gitRepoRoot && (
 						<GitWorktreeSelector
