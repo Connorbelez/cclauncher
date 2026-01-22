@@ -10,7 +10,13 @@ import {
 	getGitRepoRoot,
 	listWorktrees,
 } from "./git";
-import { formatModelInfo, launchClaudeCode } from "./launcher";
+import {
+	buildCliArgs,
+	formatModelInfo,
+	launchClaudeCode,
+	launchClaudeCodeBackground,
+	type PermissionMode,
+} from "./launcher";
 import { getProjectConfig, saveProjectConfig } from "./projectStore";
 import {
 	getDefaultModel,
@@ -28,6 +34,12 @@ export type CliCommand =
 	| { type: "list" }
 	| { type: "launch"; modelName: string }
 	| { type: "launch-default" }
+	| {
+			type: "multi-launch";
+			modelNames: string[];
+			prompt: string;
+			permissionMode: PermissionMode;
+	  }
 	| { type: "add"; model: Partial<Model> }
 	| { type: "worktree"; modelName?: string }
 	| { type: "worktree-list" }
@@ -74,6 +86,7 @@ USAGE:
 COMMANDS:
   (no command)         Launch the TUI for interactive model selection
   --model <name>       Launch Claude Code with the specified model
+  --multi <models...>  Launch multiple models in parallel (separate terminals)
   --list               List all configured models
   --add                Add a new model (use with other flags)
   --worktree, -w       Create a new worktree and launch Claude Code in it
@@ -98,9 +111,15 @@ OPTIONS FOR --add:
   --fast-model <id>   Fast model identifier
   --description <text> Model description
 
+OPTIONS FOR --multi:
+  --prompt <text>            Shared prompt for all instances
+  --permission-mode <mode>   default|plan|acceptEdits|autoAccept
+
 EXAMPLES:
   claude-launch                           # Open TUI
   claude-launch --model minimax           # Launch with "minimax" model
+  claude-launch --multi minimax openrouter \\
+    --prompt "Compare answers" --permission-mode plan
   claude-launch --list                    # List all models
   claude-launch --add --name mymodel \\
     --endpoint https://api.example.com \\
@@ -115,6 +134,12 @@ For more information, visit: https://github.com/Connorbelez/cclauncher
 
 const TRUE_VALUES = new Set(["true", "1", "yes", "y", "on"]);
 const FALSE_VALUES = new Set(["false", "0", "no", "n", "off"]);
+const PERMISSION_MODE_VALUES = new Set<PermissionMode>([
+	"default",
+	"plan",
+	"acceptEdits",
+	"autoAccept",
+]);
 
 function parseBooleanFlag(value: string | undefined): boolean | null {
 	const normalized = value?.trim().toLowerCase();
@@ -181,6 +206,7 @@ function handleLongFlag(
 			"list",
 			"version",
 			"add",
+			"multi",
 			"worktree",
 			"worktree-list",
 			"project-config",
@@ -279,6 +305,37 @@ function constructCommand(
 		return {
 			type: "worktree",
 			modelName: modelName && modelName !== "true" ? modelName : undefined,
+		};
+	}
+
+	if (flags.has("multi")) {
+		const prompt = flags.get("prompt");
+		const permissionModeRaw = flags.get("permission-mode");
+		const permissionMode =
+			permissionModeRaw && permissionModeRaw !== "true"
+				? permissionModeRaw
+				: "default";
+
+		if (!PERMISSION_MODE_VALUES.has(permissionMode as PermissionMode)) {
+			return {
+				type: "error",
+				message:
+					"--permission-mode must be one of: default|plan|acceptEdits|autoAccept",
+			};
+		}
+
+		if (positional.length === 0) {
+			return {
+				type: "error",
+				message: "--multi requires at least one model name",
+			};
+		}
+
+		return {
+			type: "multi-launch",
+			modelNames: positional,
+			prompt: prompt && prompt !== "true" ? prompt : "",
+			permissionMode: permissionMode as PermissionMode,
 		};
 	}
 
@@ -682,6 +739,75 @@ async function handleLaunchDefaultCommand(): Promise<number> {
 	return launchResult.exitCode;
 }
 
+async function handleMultiLaunchCommand(
+	modelNames: string[],
+	prompt: string,
+	permissionMode: PermissionMode
+): Promise<number> {
+	const cliArgs = buildCliArgs({
+		initialPrompt: prompt,
+		permissionMode,
+	});
+
+	const resolvedModels: Model[] = [];
+	const missingModels: string[] = [];
+	for (const name of modelNames) {
+		const result = getModel(name);
+		if (!result.ok) {
+			missingModels.push(name);
+			continue;
+		}
+		resolvedModels.push(result.data);
+	}
+
+	if (missingModels.length > 0) {
+		for (const name of missingModels) {
+			console.error(`Error: Model '${name}' not found`);
+		}
+		console.error(`\nUse 'claude-launch --list' to see available models.`);
+	}
+
+	if (resolvedModels.length === 0) {
+		return 1;
+	}
+
+	console.log(
+		`Launching ${resolvedModels.length} Claude Code instance(s) in separate terminals...`
+	);
+	if (prompt.trim()) {
+		console.log(`Prompt: "${prompt.trim()}"`);
+	}
+	if (permissionMode !== "default") {
+		console.log(`Permission mode: ${permissionMode}`);
+	}
+	console.log("");
+
+	const launchResults: { model: string; ok: boolean; error?: string }[] = [];
+	for (const model of resolvedModels) {
+		console.log(`Launching: ${model.name}`);
+		const result = await launchClaudeCodeBackground(model, { cliArgs });
+		launchResults.push({
+			model: model.name,
+			ok: result.ok,
+			error: result.ok ? undefined : result.message,
+		});
+	}
+
+	const successCount = launchResults.filter((r) => r.ok).length;
+	console.log(
+		`\nLaunched ${successCount}/${launchResults.length} instance(s) successfully.`
+	);
+
+	if (successCount < launchResults.length) {
+		const failures = launchResults.filter((r) => !r.ok);
+		for (const failure of failures) {
+			console.error(`  ${failure.model}: ${failure.error}`);
+		}
+	}
+
+	return successCount === launchResults.length ? 0 : 1;
+}
+
 function handleAddCommand(model: Partial<Model>): number {
 	const fullModel = model as Model;
 	const result = saveModel(fullModel);
@@ -712,6 +838,12 @@ export async function executeCommand(command: CliCommand): Promise<number> {
 			return await handleLaunchCommand(command.modelName);
 		case "launch-default":
 			return await handleLaunchDefaultCommand();
+		case "multi-launch":
+			return await handleMultiLaunchCommand(
+				command.modelNames,
+				command.prompt,
+				command.permissionMode
+			);
 		case "add":
 			return handleAddCommand(command.model);
 		case "worktree":

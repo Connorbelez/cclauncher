@@ -1,15 +1,14 @@
 # CCLauncher
 
-Launch Claude Code with the right model, endpoint, and auth without ever editing configs. CCLauncher is a keyboard-first TUI + CLI that injects the correct `ANTHROPIC_*` environment variables for each session so you can switch providers and models in seconds.
+Launch Claude Code instances with the right model, endpoint, worktree, and auth without ever editing configs. CCLauncher is a keyboard-first TUI + CLI that injects the correct `ANTHROPIC_*` environment variables for each session so you can switch providers and models in seconds.
 
-I built this to solve my own workflow pain: bouncing between providers, running parallel experiments, and keeping secrets out of repos. It ended up being useful enough that I use it daily, and I hope it can help your workflow too.
+I built this to solve my own workflow pain: bouncing between providers when I hit anthropic usage limits, keeping mutliple copies of settings.json, launching and managing multiple Claude Code sessions in worktrees etc. It ended up being useful enough that I use it daily, and I hope it can help your workflow too.
 
 ![CCLauncher hero](docs/screenshots/hero.png)
 
 ## Why it exists
 
-- **Model switching is friction**: CCLauncher makes it a single keystroke.
-- **Secrets should not live in files**: use `env:MY_VAR` so secrets stay in your shell.
+- **Switching Claude Code configs is friction**: CCLauncher makes it a single keystroke.
 - **Parallel Claude Code sessions are messy**: multi-launch and worktrees keep them clean.
 - **Projects need setup steps**: optionally run a script every time a worktree is created.
 
@@ -17,7 +16,7 @@ I built this to solve my own workflow pain: bouncing between providers, running 
 
 ### 1) Model management that feels instant
 
-Create, edit, reorder, and launch model profiles without leaving the TUI. Each profile defines an endpoint, auth token, and model IDs so you can jump between Anthropic, OpenAI-compatible proxies, or self-hosted gateways.
+Create, edit, reorder, and launch model profiles without leaving the TUI or modifying your `.claude/settings.json` every time you want to use claude code with a different provider. Each profile defines an endpoint, auth token, and model IDs so you can jump between Anthropic compatible providers and self-hosted gateways.
 
 How to use it:
 - Press `n` to create a model.
@@ -27,9 +26,9 @@ How to use it:
 
 ![Model details](docs/screenshots/model-details.png)
 
-### 2) Git worktrees for safe experiments
+### 2) Git worktrees 
 
-Need a clean workspace for each Claude Code session? Toggle worktree mode to spin up a detached worktree per launch. Perfect for parallel tasks and disposable experiments.
+Want to spin up claude code to work on a specific task without interfering with your main workspace? Toggle worktree mode to spin up a detached worktree per launch. Perfect for parallel tasks and disposable experiments.
 
 How to use it:
 - Press `w` to toggle worktree mode (only in git repos).
@@ -126,6 +125,81 @@ claude-launch --add --name mymodel \
   --endpoint https://api.anthropic.com \
   --token env:ANTHROPIC_API_KEY \
   --model-id claude-opus-4-5-20251101
+```
+
+- **Multi-launch (CLI)**:
+
+```bash
+claude-launch --multi minimax openrouter \
+  --prompt "Compare answers" \
+  --permission-mode plan
+```
+
+### CLI reference (full)
+
+#### Usage
+
+```bash
+claude-launch [OPTIONS] [COMMAND]
+```
+
+#### Commands and modes
+
+- **(no command)**: launch the TUI for interactive model selection
+- **`--model <name>`**: launch Claude Code with a named model
+- **`--multi <models...>`**: launch multiple models in parallel (separate terminals)
+- **`--list`**: list all configured models
+- **`--add`**: add a new model (use with `--name`, `--endpoint`, etc.)
+- **`--worktree`, `-w`**: create a new worktree and launch Claude Code in it
+- **`--worktree-list`**: list all active worktrees
+- **`--project-config`**: manage per-project settings
+- **`--run-script`**: run the configured setup script in the current directory
+- **`--help`**: show help
+- **`--version`**: show version
+- **Positional model name**: `claude-launch mymodel` is equivalent to `--model mymodel`
+
+#### Options for `--add`
+
+- **`--name <name>`**: model name (required)
+- **`--endpoint <url>`**: API endpoint URL
+- **`--token <token>`**: auth token (`env:VAR_NAME` supported)
+- **`--model-id <id>`**: model identifier (e.g., `claude-opus-4-5-20251101`)
+- **`--fast-model <id>`**: fast model identifier
+- **`--description <text>`**: model description
+
+#### Options for `--project-config`
+
+- **`--show`**: display the current project config
+- **`--set-script <path>`**: set the post-worktree setup script
+- **`--spawn-in-terminal <value>`**: run setup script in a separate terminal  
+  Accepted values: `true/false/1/0/yes/no/on/off`
+- **`--terminal-app <path|name>`**: terminal app to use for the setup script
+
+#### Options for `--multi`
+
+- **`--prompt <text>`**: shared prompt for all instances
+- **`--permission-mode <mode>`**: `default|plan|acceptEdits|autoAccept`
+
+#### Examples
+
+```bash
+claude-launch
+claude-launch minimax
+claude-launch --model minimax
+claude-launch --list
+claude-launch --add --name mymodel \
+  --endpoint https://api.example.com \
+  --token env:MY_API_TOKEN \
+  --model-id claude-opus-4-5-20251101
+claude-launch --multi minimax openrouter \
+  --prompt "Compare answers" \
+  --permission-mode plan
+claude-launch --worktree
+claude-launch --worktree-list
+claude-launch --project-config --show
+claude-launch --project-config --set-script ./scripts/setup.sh
+claude-launch --project-config --spawn-in-terminal true --terminal-app Warp
+claude-launch --run-script
 ```
 
 ### Keyboard shortcuts (cheat sheet)

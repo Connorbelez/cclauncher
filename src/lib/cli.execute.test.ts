@@ -8,6 +8,8 @@ const listWorktrees = vi.fn();
 const getProjectConfig = vi.fn();
 const saveProjectConfig = vi.fn();
 const launchClaudeCode = vi.fn();
+const launchClaudeCodeBackground = vi.fn();
+const getModel = vi.fn();
 
 if (hasViMock) {
 	vi.mock("./git", () => ({
@@ -25,12 +27,13 @@ if (hasViMock) {
 	vi.mock("./launcher", () => ({
 		formatModelInfo: vi.fn(),
 		launchClaudeCode,
+		launchClaudeCodeBackground,
 	}));
 
 	vi.mock("./store", () => ({
 		getStorePath: () => "/tmp/store",
 		getDefaultModel: vi.fn(),
-		getModel: vi.fn(),
+		getModel,
 		getModelList: vi.fn(),
 		saveModel: vi.fn(),
 	}));
@@ -101,5 +104,35 @@ runDescribe("executeCommand", () => {
 
 		const result = await executeCommand({ type: "run-script" });
 		expect(result).toBe(1);
+	});
+
+	it("handles multi-launch command", async () => {
+		getModel.mockImplementation((name: string) => ({
+			ok: true,
+			data: {
+				name,
+				description: "",
+				value: {
+					ANTHROPIC_BASE_URL: "https://api.example.com",
+					ANTHROPIC_AUTH_TOKEN: "token",
+					ANTHROPIC_MODEL: "claude",
+					ANTHROPIC_SMALL_FAST_MODEL: "claude-fast",
+					ANTHROPIC_DEFAULT_SONNET_MODEL: "",
+					ANTHROPIC_DEFAULT_OPUS_MODEL: "",
+					ANTHROPIC_DEFAULT_HAIKU_MODEL: "",
+				},
+			},
+		}));
+		launchClaudeCodeBackground.mockResolvedValue({ ok: true, exitCode: 0 });
+
+		const result = await executeCommand({
+			type: "multi-launch",
+			modelNames: ["one", "two"],
+			prompt: "Compare",
+			permissionMode: "plan",
+		});
+
+		expect(result).toBe(0);
+		expect(launchClaudeCodeBackground).toHaveBeenCalledTimes(2);
 	});
 });
