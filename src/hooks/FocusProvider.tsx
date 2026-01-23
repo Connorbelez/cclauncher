@@ -1,6 +1,5 @@
 import { useKeyboard } from "@opentui/react";
 import type React from "react";
-import { logDebug } from "@/lib/logger";
 import {
 	createContext,
 	useCallback,
@@ -9,6 +8,7 @@ import {
 	useMemo,
 	useState,
 } from "react";
+import { logDebug } from "@/lib/logger";
 
 interface Key {
 	name?: string;
@@ -117,15 +117,7 @@ export function FocusProvider({
 				handleKeyRegistry(name);
 			}
 		},
-		[
-			focusedId,
-			isModalOpen,
-			inPreLaunchDialog,
-			editMode,
-			handleTab,
-			handleKeyRegistry,
-			exitGuards,
-		]
+		[focusedId, isModalOpen, editMode, handleTab, handleKeyRegistry, exitGuards]
 	);
 
 	useKeyboard(handleGlobalKeys);

@@ -205,6 +205,51 @@ describe("parseArgs", () => {
 		});
 	});
 
+	describe("Multi-launch command", () => {
+		it("should parse multi-launch with positional models", () => {
+			const result = parseArgs(["--multi", "model-a", "model-b"]);
+			expect(result).toEqual({
+				type: "multi-launch",
+				modelNames: ["model-a", "model-b"],
+				prompt: "",
+				permissionMode: "default",
+			});
+		});
+
+		it("should parse multi-launch with prompt and permission mode", () => {
+			const result = parseArgs([
+				"--multi",
+				"model-a",
+				"model-b",
+				"--prompt",
+				"Compare these",
+				"--permission-mode",
+				"plan",
+			]);
+			expect(result).toEqual({
+				type: "multi-launch",
+				modelNames: ["model-a", "model-b"],
+				prompt: "Compare these",
+				permissionMode: "plan",
+			});
+		});
+
+		it("should return error for invalid permission mode", () => {
+			const result = parseArgs([
+				"--multi",
+				"model-a",
+				"--permission-mode",
+				"invalid",
+			]);
+			expect(result.type).toBe("error");
+		});
+
+		it("should return error when --multi has no models", () => {
+			const result = parseArgs(["--multi"]);
+			expect(result.type).toBe("error");
+		});
+	});
+
 	describe("Project config commands", () => {
 		it("should return project-config-show for --project-config", () => {
 			const result = parseArgs(["--project-config"]);
@@ -273,11 +318,7 @@ describe("parseArgs", () => {
 		});
 
 		it("should return project-config-set for --terminal-app", () => {
-			const result = parseArgs([
-				"--project-config",
-				"--terminal-app",
-				"Warp",
-			]);
+			const result = parseArgs(["--project-config", "--terminal-app", "Warp"]);
 			expect(result).toEqual({
 				type: "project-config-set",
 				scriptPath: undefined,

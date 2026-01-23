@@ -122,6 +122,44 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 		setModalOpen(false);
 	}, [setModalOpen]);
 
+	const closeAllModals = useCallback(() => {
+		closeConfirm();
+		closeOverwriteConfirm();
+	}, [closeConfirm, closeOverwriteConfirm]);
+
+	useEffect(() => {
+		if (!(isConfirmOpen || isOverwriteConfirmOpen)) {
+			return;
+		}
+
+		const eventTarget = globalThis as unknown as {
+			addEventListener?: (type: string, listener: () => void) => void;
+			removeEventListener?: (type: string, listener: () => void) => void;
+		};
+		const handleBlur = () => {
+			closeAllModals();
+		};
+
+		if (eventTarget.addEventListener) {
+			eventTarget.addEventListener("blur", handleBlur);
+			eventTarget.addEventListener("focusout", handleBlur);
+		}
+
+		return () => {
+			if (eventTarget.removeEventListener) {
+				eventTarget.removeEventListener("blur", handleBlur);
+				eventTarget.removeEventListener("focusout", handleBlur);
+			}
+			closeAllModals();
+		};
+	}, [isConfirmOpen, isOverwriteConfirmOpen, closeAllModals]);
+
+	useEffect(() => {
+		if ((isConfirmOpen || isOverwriteConfirmOpen) && !isFocused) {
+			closeAllModals();
+		}
+	}, [isConfirmOpen, isOverwriteConfirmOpen, isFocused, closeAllModals]);
+
 	const handleSave = useCallback(
 		(allowOverwrite: boolean): { ok: boolean; reason?: string } => {
 			setErrorMessage(null);
@@ -329,148 +367,148 @@ export function ModelDetails({ model, onSave }: ModelDetailsProps) {
 					title={editMode ? `Editing: ${model.name}` : "Model Details"}
 				>
 					<box flexDirection="column" gap={1} padding={1}>
-					{/* Header Section */}
-					<box flexDirection="column" marginBottom={1}>
-						<text
-							attributes={TextAttributes.BOLD}
-							style={{ fg: theme.colors.text.primary }}
-						>
-							{modelName}
-						</text>
-						<text style={{ fg: theme.colors.text.secondary }}>
-							{modelDescription}
-						</text>
-					</box>
-
-					{errorMessage && (
-						<box
-							flexDirection="column"
-							style={{
-								border: true,
-								borderStyle: "rounded",
-								borderColor: "#ef4444",
-								backgroundColor: "#1f1f1f",
-								paddingLeft: 1,
-								paddingRight: 1,
-								paddingTop: 1,
-								paddingBottom: 1,
-								marginBottom: 1,
-							}}
-						>
+						{/* Header Section */}
+						<box flexDirection="column" marginBottom={1}>
 							<text
 								attributes={TextAttributes.BOLD}
-								style={{ fg: "#ef4444", marginBottom: 1 }}
+								style={{ fg: theme.colors.text.primary }}
 							>
-								Error
+								{modelName}
 							</text>
-							{errorMessage.split("\n").map((line, idx) => (
-								<text
-									key={`${idx}-${line}`}
-									style={{ fg: theme.colors.text.primary }}
-								>
-									{line}
-								</text>
-							))}
+							<text style={{ fg: theme.colors.text.secondary }}>
+								{modelDescription}
+							</text>
 						</box>
-					)}
 
-					{/* Basic Info Section */}
-					<box flexDirection="column" gap={0}>
-						<text
-							attributes={TextAttributes.UNDERLINE}
-							style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
-						>
-							Basic Info
-						</text>
+						{errorMessage && (
+							<box
+								flexDirection="column"
+								style={{
+									border: true,
+									borderStyle: "rounded",
+									borderColor: "#ef4444",
+									backgroundColor: "#1f1f1f",
+									paddingLeft: 1,
+									paddingRight: 1,
+									paddingTop: 1,
+									paddingBottom: 1,
+									marginBottom: 1,
+								}}
+							>
+								<text
+									attributes={TextAttributes.BOLD}
+									style={{ fg: "#ef4444", marginBottom: 1 }}
+								>
+									Error
+								</text>
+								{errorMessage.split("\n").map((line, idx) => (
+									<text
+										key={`${idx}-${line}`}
+										style={{ fg: theme.colors.text.primary }}
+									>
+										{line}
+									</text>
+								))}
+							</box>
+						)}
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 0}
-							label="Name"
-							onChange={setModelName}
-							value={modelName}
-						/>
+						{/* Basic Info Section */}
+						<box flexDirection="column" gap={0}>
+							<text
+								attributes={TextAttributes.UNDERLINE}
+								style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+							>
+								Basic Info
+							</text>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 1}
-							label="Description"
-							onChange={setModelDescription}
-							value={modelDescription}
-						/>
-					</box>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 0}
+								label="Name"
+								onChange={setModelName}
+								value={modelName}
+							/>
 
-					{/* API Configuration Section */}
-					<box flexDirection="column" gap={0} marginTop={1}>
-						<text
-							attributes={TextAttributes.UNDERLINE}
-							style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
-						>
-							API Configuration
-						</text>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 1}
+								label="Description"
+								onChange={setModelDescription}
+								value={modelDescription}
+							/>
+						</box>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 2}
-							label="Base URL"
-							onChange={setAnthropicBaseUrl}
-							placeholder="https://api.anthropic.com"
-							value={anthropicBaseUrl}
-						/>
+						{/* API Configuration Section */}
+						<box flexDirection="column" gap={0} marginTop={1}>
+							<text
+								attributes={TextAttributes.UNDERLINE}
+								style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+							>
+								API Configuration
+							</text>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 3}
-							isPassword={true}
-							label="Auth Token"
-							onChange={setAnthropicAuthToken}
-							value={anthropicAuthToken}
-						/>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 2}
+								label="Base URL"
+								onChange={setAnthropicBaseUrl}
+								placeholder="https://api.anthropic.com"
+								value={anthropicBaseUrl}
+							/>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 4}
-							label="Model"
-							onChange={setAnthropicModel}
-							value={anthropicModel}
-						/>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 3}
+								isPassword={true}
+								label="Auth Token"
+								onChange={setAnthropicAuthToken}
+								value={anthropicAuthToken}
+							/>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 5}
-							label="Small Fast Model"
-							onChange={setAnthropicSmallFastModel}
-							placeholder="e.g. claude-3-haiku-20240307"
-							value={anthropicSmallFastModel}
-						/>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 4}
+								label="Model"
+								onChange={setAnthropicModel}
+								value={anthropicModel}
+							/>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 6}
-							label="Sonnet Model"
-							onChange={setAnthropicDefaultSonnetModel}
-							placeholder="e.g. claude-3-5-sonnet-20240620"
-							value={anthropicDefaultSonnetModel}
-						/>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 5}
+								label="Small Fast Model"
+								onChange={setAnthropicSmallFastModel}
+								placeholder="e.g. claude-3-haiku-20240307"
+								value={anthropicSmallFastModel}
+							/>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 7}
-							label="Opus Model"
-							onChange={setAnthropicDefaultOpusModel}
-							placeholder="e.g. claude-3-opus-20240229"
-							value={anthropicDefaultOpusModel}
-						/>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 6}
+								label="Sonnet Model"
+								onChange={setAnthropicDefaultSonnetModel}
+								placeholder="e.g. claude-3-5-sonnet-20240620"
+								value={anthropicDefaultSonnetModel}
+							/>
 
-						<FormField
-							editMode={editMode}
-							isFocused={isActive && editMode && activeFieldIndex === 8}
-							label="Haiku Model"
-							onChange={setAnthropicDefaultHaikuModel}
-							placeholder="e.g. claude-3-haiku-20240307"
-							value={anthropicDefaultHaikuModel}
-						/>
-					</box>
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 7}
+								label="Opus Model"
+								onChange={setAnthropicDefaultOpusModel}
+								placeholder="e.g. claude-3-opus-20240229"
+								value={anthropicDefaultOpusModel}
+							/>
+
+							<FormField
+								editMode={editMode}
+								isFocused={isActive && editMode && activeFieldIndex === 8}
+								label="Haiku Model"
+								onChange={setAnthropicDefaultHaikuModel}
+								placeholder="e.g. claude-3-haiku-20240307"
+								value={anthropicDefaultHaikuModel}
+							/>
+						</box>
 					</box>
 				</scrollbox>
 			</box>

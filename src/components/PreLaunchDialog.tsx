@@ -1,15 +1,16 @@
 import type { SelectOption } from "@opentui/core";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MultiLaunchOptions, PermissionMode } from "@/lib/launcher";
 import { theme } from "@/theme";
-import { detectTerminals, type SystemTerminal } from "@/utils/terminalLauncher";
+import { TerminalSelect } from "./TerminalSelect";
 
 interface PreLaunchDialogProps {
 	isOpen: boolean;
 	selectedModels: SelectOption[];
 	useWorktree: boolean;
+	projectTerminalApp?: string;
 	onLaunch: (options: MultiLaunchOptions & { terminalApp?: string }) => void;
 	onCancel: () => void;
 }
@@ -26,7 +27,13 @@ const PERMISSION_MODES: PermissionModeOption[] = [
 	{ value: "acceptEdits", label: "Accept Edits Only" },
 ];
 
-type FocusField = "prompt" | "permission" | "terminal" | "launch" | "cancel";
+type FocusField =
+	| "prompt"
+	| "permission"
+	| "terminal"
+	| "terminalCustom"
+	| "launch"
+	| "cancel";
 
 /**
  * Modal dialog for configuring multi-model launch options.
@@ -38,56 +45,43 @@ export function PreLaunchDialog({
 	isOpen,
 	selectedModels,
 	useWorktree,
+	projectTerminalApp,
 	onLaunch,
 	onCancel,
 }: PreLaunchDialogProps) {
 	const [prompt, setPrompt] = useState("");
 	const [permissionIndex, setPermissionIndex] = useState(0);
-	const [terminalIndex, setTerminalIndex] = useState(0);
+	const [terminalApp, setTerminalApp] = useState("");
+	const [customTerminalPath, setCustomTerminalPath] = useState("");
 	const [focusedField, setFocusedField] = useState<FocusField>("prompt");
 	const [isSelectingPermission, setIsSelectingPermission] = useState(false);
 	const [isSelectingTerminal, setIsSelectingTerminal] = useState(false);
-	const [detectedTerminals, setDetectedTerminals] = useState<SystemTerminal[]>(
-		[]
-	);
 	const { width, height } = useTerminalDimensions();
-
-	// Detect available terminals on mount
-	useEffect(() => {
-		const terminals = detectTerminals();
-		setDetectedTerminals(terminals);
-	}, []);
-
-	// Terminal options: Auto-detect + detected terminals
-	const terminalOptions = useMemo(() => {
-		return [
-			{ name: "Auto (Terminal.app)", path: "" },
-			...detectedTerminals.map((t) => ({ name: t.name, path: t.path })),
-		];
-	}, [detectedTerminals]);
 
 	// Reset state when dialog opens
 	useEffect(() => {
 		if (isOpen) {
 			setPrompt("");
 			setPermissionIndex(0);
-			setTerminalIndex(0);
+			setTerminalApp(projectTerminalApp ?? "");
+			setCustomTerminalPath("");
 			setFocusedField("prompt");
 			setIsSelectingPermission(false);
 			setIsSelectingTerminal(false);
 		}
-	}, [isOpen]);
+	}, [isOpen, projectTerminalApp]);
 
 	const handleLaunch = useCallback(() => {
-		const selectedTerminal = terminalOptions[terminalIndex];
 		const permissionMode =
 			PERMISSION_MODES[permissionIndex]?.value ?? "default";
+		const terminalSelection =
+			terminalApp === "custom" ? customTerminalPath.trim() : terminalApp;
 		onLaunch({
 			initialPrompt: prompt,
 			permissionMode,
-			terminalApp: selectedTerminal?.path || undefined,
+			terminalApp: terminalSelection.trim() || undefined,
 		});
-	}, [prompt, permissionIndex, terminalIndex, terminalOptions, onLaunch]);
+	}, [prompt, permissionIndex, terminalApp, customTerminalPath, onLaunch]);
 
 	const handleCancel = useCallback(() => {
 		onCancel();
@@ -119,19 +113,8 @@ export function PreLaunchDialog({
 		}
 
 		if (isSelectingTerminal) {
-			if (name === "up") {
-				setTerminalIndex(
-					(prev) => (prev - 1 + terminalOptions.length) % terminalOptions.length
-				);
-				return;
-			}
-			if (name === "down") {
-				setTerminalIndex((prev) => (prev + 1) % terminalOptions.length);
-				return;
-			}
-			if (name === "return" || name === "escape") {
+			if (name === "escape") {
 				setIsSelectingTerminal(false);
-				return;
 			}
 			return;
 		}
@@ -141,6 +124,7 @@ export function PreLaunchDialog({
 			"prompt",
 			"permission",
 			"terminal",
+			...(terminalApp === "custom" ? ["terminalCustom"] : []),
 			"launch",
 			"cancel",
 		];
@@ -169,29 +153,33 @@ export function PreLaunchDialog({
 		if (name === "return") {
 			if (focusedField === "permission") {
 				setIsSelectingPermission(true);
-			} else if (focusedField === "terminal") {
-				setIsSelectingTerminal(true);
-			} else if (focusedField === "cancel") {
-				handleCancel();
-			} else if (focusedField === "launch") {
-				handleLaunch();
-			} else {
-				// From prompt field, launch
-				handleLaunch();
+				return;
 			}
-			return;
+			if (focusedField === "cancel") {
+				handleCancel();
+				return;
+			}
+			if (focusedField === "launch") {
+				handleLaunch();
+				return;
+			}
+			if (focusedField === "prompt") {
+				handleLaunch();
+				return;
+			}
 		}
 	});
 
 	if (!isOpen) return null;
 
 	// Modal dimensions
-	const modalWidth = 60;
-	const modalHeight = useWorktree ? 19 : 18;
+	const modalWidth = Math.min(60, Math.max(30, width - 4));
+	const modalHeight =
+		(useWorktree ? 19 : 18) + (terminalApp === "custom" ? 4 : 0);
 
 	// Center the modal
-	const left = Math.floor((width - modalWidth) / 2);
-	const top = Math.floor((height - modalHeight) / 2);
+	const left = Math.max(0, Math.floor((width - modalWidth) / 2));
+	const top = Math.max(0, Math.floor((height - modalHeight) / 2));
 
 	const modelCount = selectedModels.length;
 	const modelNames =
@@ -203,7 +191,6 @@ export function PreLaunchDialog({
 					.join(", ")} +${modelCount - 2} more`;
 
 	const currentMode = PERMISSION_MODES[permissionIndex];
-	const currentTerminal = terminalOptions[terminalIndex];
 	const launchActive = focusedField === "launch";
 	const cancelActive = focusedField === "cancel";
 
@@ -266,6 +253,7 @@ export function PreLaunchDialog({
 						style={{
 							width: modalWidth - 6,
 							border: true,
+							height: 3,
 							borderStyle: focusedField === "prompt" ? "double" : "rounded",
 							borderColor:
 								focusedField === "prompt"
@@ -275,6 +263,8 @@ export function PreLaunchDialog({
 								focusedField === "prompt"
 									? theme.colors.surfaceHighlight
 									: theme.colors.background,
+							paddingLeft: 1,
+							paddingRight: 1,
 						}}
 					>
 						<input
@@ -282,7 +272,7 @@ export function PreLaunchDialog({
 							onInput={setPrompt}
 							placeholder="(optional) Enter a prompt for all instances..."
 							style={{
-								width: modalWidth - 8,
+								width: "100%",
 							}}
 							value={prompt}
 						/>
@@ -325,36 +315,20 @@ export function PreLaunchDialog({
 
 				{/* Terminal selector */}
 				<box flexDirection="column" style={{ marginBottom: 1 }}>
-					<text style={{ fg: theme.colors.text.muted }}>Terminal:</text>
-					<box
-						style={{
-							width: modalWidth - 6,
-							border: true,
-							borderStyle: focusedField === "terminal" ? "double" : "rounded",
-							borderColor:
-								focusedField === "terminal"
-									? theme.colors.primary
-									: theme.colors.border,
-							backgroundColor:
-								focusedField === "terminal"
-									? theme.colors.surfaceHighlight
-									: theme.colors.background,
-							paddingLeft: 1,
-							paddingRight: 1,
-						}}
-					>
-						<text
-							style={{
-								fg:
-									focusedField === "terminal"
-										? theme.colors.text.primary
-										: theme.colors.text.secondary,
-							}}
-						>
-							{currentTerminal?.name || "Auto"}{" "}
-							{focusedField === "terminal" ? "▲▼" : ""}
-						</text>
-					</box>
+					<TerminalSelect
+						customPath={customTerminalPath}
+						customPathFocused={focusedField === "terminalCustom"}
+						isFocused={focusedField === "terminal"}
+						isSelecting={isSelectingTerminal}
+						label="Terminal:"
+						onChange={setTerminalApp}
+						onCustomPathChange={setCustomTerminalPath}
+						onSelectingChange={setIsSelectingTerminal}
+						showHint={false}
+						showSelectionList={false}
+						value={terminalApp}
+						width={modalWidth - 6}
+					/>
 				</box>
 
 				{/* Action buttons */}

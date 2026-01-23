@@ -53,6 +53,7 @@ export const modelSchema = z.object({
 
 export type ModelValue = z.infer<typeof modelValueSchema>;
 export type Model = z.infer<typeof modelSchema>;
+export type ModelCreateInput = Omit<Model, "isDefault">;
 export type ModelsJson = Record<string, Model>;
 
 function getDefaultModels(): ModelsJson {

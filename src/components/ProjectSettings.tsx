@@ -9,6 +9,7 @@ import {
 import { looksLikeFilePath } from "@/lib/scriptExecution";
 import { theme } from "@/theme";
 import { FormField } from "./FormField";
+import { TerminalSelect } from "./TerminalSelect";
 
 interface ProjectSettingsProps {
 	/** Git repository root path */
@@ -40,10 +41,6 @@ export function ProjectSettings({
 	const [originalSpawnInTerminal, setOriginalSpawnInTerminal] = useState(false);
 	const [originalTerminalApp, setOriginalTerminalApp] = useState("");
 
-	const [detectedTerminals, setDetectedTerminals] = useState<
-		{ name: string; path: string }[]
-	>([]);
-
 	// Field indices:
 	// 0: Script Path
 	// 1: Spawn in Terminal (Checkbox)
@@ -56,14 +53,6 @@ export function ProjectSettings({
 	const [saveSuccess, setSaveSuccess] = useState(false);
 	const [saveRequestId, setSaveRequestId] = useState(0);
 	const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-	// Load detected terminals on mount
-	useEffect(() => {
-		import("@/utils/terminalLauncher").then(({ detectTerminals }) => {
-			const terminals = detectTerminals();
-			setDetectedTerminals(terminals);
-		});
-	}, []);
 
 	// Load existing config on mount
 	useEffect(() => {
@@ -85,7 +74,7 @@ export function ProjectSettings({
 	useEffect(() => {
 		if (!error) return;
 		setError(null);
-	}, [scriptPath, spawnInTerminal, terminalApp, customTerminalPath]);
+	}, [error]);
 
 	// Clear success message after a delay
 	useEffect(() => {
@@ -119,7 +108,11 @@ export function ProjectSettings({
 
 		const trimmedScript = scriptPath.trim();
 		const looksLikePath = looksLikeFilePath(trimmedScript);
-		if (trimmedScript && looksLikePath && !scriptExists(gitRepoRoot, trimmedScript)) {
+		if (
+			trimmedScript &&
+			looksLikePath &&
+			!scriptExists(gitRepoRoot, trimmedScript)
+		) {
 			setError(`File not found: ${trimmedScript}`);
 			return;
 		}
@@ -157,7 +150,6 @@ export function ProjectSettings({
 		spawnInTerminal,
 		terminalApp,
 		customTerminalPath,
-		onSave,
 	]);
 
 	const handleCancel = useCallback(() => {
@@ -236,27 +228,6 @@ export function ProjectSettings({
 			// Toggle Spawn
 			if (key.name === "return" || key.name === "space") {
 				setSpawnInTerminal((p) => !p);
-			}
-		} else if (activeFieldIndex === 2) {
-			// Terminal Select
-			if (isSelectingTerminal) {
-				if (key.name === "up" || key.name === "down") {
-					const options = [
-						"",
-						...detectedTerminals.map((t) => t.path),
-						"custom",
-					];
-					const currentIndex = options.indexOf(terminalApp);
-					let nextIndex =
-						key.name === "up" ? currentIndex - 1 : currentIndex + 1;
-					if (nextIndex < 0) nextIndex = options.length - 1;
-					if (nextIndex >= options.length) nextIndex = 0;
-					setTerminalApp(options[nextIndex] ?? "");
-				} else if (key.name === "return") {
-					setIsSelectingTerminal(false);
-				}
-			} else if (key.name === "return" || key.name === "space") {
-				setIsSelectingTerminal(true);
 			}
 		} else if (activeFieldIndex === 3 && key.name === "return") {
 			// Custom Path Input
@@ -351,100 +322,18 @@ export function ProjectSettings({
 
 					{/* 2: Terminal Selection */}
 					{spawnInTerminal && (
-						<box flexDirection="column">
-							<text
-								style={{
-									fg:
-										activeFieldIndex === 2
-											? theme.colors.primary
-											: theme.colors.text.muted,
-								}}
-							>
-								Terminal Application
-							</text>
-							<box
-								style={{
-									border: true,
-									borderStyle: activeFieldIndex === 2 ? "double" : "rounded",
-									borderColor:
-										activeFieldIndex === 2
-											? theme.colors.primary
-											: theme.colors.border,
-									paddingLeft: 1,
-									paddingRight: 1,
-									height: isSelectingTerminal
-										? detectedTerminals.length + 4
-										: 3, // Expanded height handled by layout if possible, else fixed
-									// Actually scrollbox handles height.
-								}}
-							>
-								{isSelectingTerminal ? (
-									<box flexDirection="column">
-										<text
-											style={{ fg: theme.colors.text.hint, marginBottom: 1 }}
-										>
-											Select a terminal:
-										</text>
-										{[
-											"",
-											...detectedTerminals.map((t) => t.path),
-											"custom",
-										].map((item) => {
-											const isSelected = item === terminalApp;
-											const label =
-												item === ""
-													? "Auto-detect (System Default)"
-													: item === "custom"
-														? "Custom Path..."
-														: detectedTerminals.find((t) => t.path === item)
-																?.name || item;
-											return (
-												<text
-													key={item}
-													style={{
-														fg: isSelected
-															? theme.colors.primary
-															: theme.colors.text.primary,
-														bg: isSelected
-															? theme.colors.surfaceHighlight
-															: undefined,
-													}}
-												>
-													{isSelected ? "> " : "  "}
-													{label}
-												</text>
-											);
-										})}
-									</box>
-								) : (
-									<text>
-										{terminalApp === ""
-											? "Auto-detect (System Default)"
-											: terminalApp === "custom"
-												? "Custom Path..."
-												: detectedTerminals.find((t) => t.path === terminalApp)
-														?.name || terminalApp}
-									</text>
-								)}
-							</box>
-							<text style={{ fg: theme.colors.text.hint }}>
-								{isSelectingTerminal
-									? "[Up/Down] Select  [Enter] Confirm"
-									: activeFieldIndex === 2
-										? "[Enter] Change Selection"
-										: ""}
-							</text>
-						</box>
-					)}
-
-					{/* 3: Custom Path */}
-					{spawnInTerminal && terminalApp === "custom" && (
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 3}
-							label="Custom Terminal Path"
-							onChange={setCustomTerminalPath}
-							value={customTerminalPath}
+						<TerminalSelect
+							customPath={customTerminalPath}
+							customPathFocused={activeFieldIndex === 3}
+							isFocused={activeFieldIndex === 2}
+							isSelecting={isSelectingTerminal}
+							label="Terminal Application"
+							onChange={setTerminalApp}
+							onCustomPathChange={setCustomTerminalPath}
+							onSelectingChange={setIsSelectingTerminal}
+							showHint={true}
+							showSelectionList={true}
+							value={terminalApp}
 						/>
 					)}
 
@@ -488,16 +377,16 @@ export function ProjectSettingsPreview({
 
 	return (
 		<box
-			flexDirection="column"
+			// flexDirection="column"
 			style={{
 				width: "100%",
 				border: true,
 				borderStyle: isActive ? "double" : "rounded",
 				borderColor,
-				paddingLeft: 1,
-				paddingRight: 1,
-				paddingTop: 0,
-				paddingBottom: 0,
+				// paddingLeft: 1,
+				// paddingRight: 1,
+				// paddingTop: 0,
+				// paddingBottom: 0,
 			}}
 			title="Project Settings"
 		>

@@ -215,11 +215,16 @@ describe("Store operations", () => {
 	});
 
 	describe("readModels", () => {
-		it("should return empty object when store does not exist", () => {
+		it("should seed default models when store does not exist", () => {
 			const result = readModels();
 			expect(result.ok).toBe(true);
 			if (result.ok) {
-				expect(result.data).toEqual({});
+				// When the store file doesn't exist, we seed defaults to give users a
+				// usable first-run experience.
+				const names = Object.keys(result.data);
+				expect(names.length).toBeGreaterThan(0);
+				expect(result.data["Z.ai GLM 4.7"]).toBeDefined();
+				expect(result.data["MiniMax M2"]).toBeDefined();
 			}
 		});
 
@@ -364,11 +369,12 @@ describe("Store operations", () => {
 			}
 		});
 
-		it("should return not_found when no models exist", () => {
+		it("should return a default model even when store does not exist (seeded defaults)", () => {
 			const result = getDefaultModel();
-			expect(result.ok).toBe(false);
-			if (!result.ok) {
-				expect(result.reason).toBe("not_found");
+			expect(result.ok).toBe(true);
+			if (result.ok) {
+				// We don't care which one, just that it's one of the seeded defaults.
+				expect(["Z.ai GLM 4.7", "MiniMax M2"]).toContain(result.data.name);
 			}
 		});
 	});
@@ -532,11 +538,14 @@ describe("Store operations", () => {
 			}
 		});
 
-		it("should return empty array when no models", () => {
+		it("should return seeded default models when store does not exist", () => {
 			const result = getModelList();
 			expect(result.ok).toBe(true);
 			if (result.ok) {
-				expect(result.data).toEqual([]);
+				expect(result.data.length).toBeGreaterThan(0);
+				expect(result.data.map((m) => m.name)).toEqual(
+					expect.arrayContaining(["Z.ai GLM 4.7", "MiniMax M2"])
+				);
 			}
 		});
 	});

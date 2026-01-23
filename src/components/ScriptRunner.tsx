@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveScriptExecution } from "@/lib/scriptExecution";
 import { theme } from "@/theme";
+import { getSetupMarkerPath } from "@/utils/launchTempDir";
 import { logger } from "@/utils/logger";
 import { SpinnerWithElapsed } from "./Spinner";
 
@@ -95,11 +95,7 @@ export function ScriptRunner({
 				}
 
 				// Start polling for completion marker
-				const markerFile = path.join(
-					workingDirectory,
-					".cclauncher",
-					"setup_done"
-				);
+				const markerFile = getSetupMarkerPath(workingDirectory);
 
 				// Poll every 500ms
 				watcherRef.current = setInterval(() => {
@@ -139,10 +135,7 @@ export function ScriptRunner({
 					if (!scriptIdentifier) {
 						setExitCode(-1);
 						setState("error");
-						setOutput((p) => [
-							...p,
-							"Script not configured.",
-						]);
+						setOutput((p) => [...p, "Script not configured."]);
 						return;
 					}
 
@@ -239,6 +232,8 @@ export function ScriptRunner({
 		workingDirectory,
 		spawnInTerminal,
 		terminalApp,
+		scriptExecution.command,
+		scriptExecution,
 	]);
 
 	// Auto-proceed after success delay

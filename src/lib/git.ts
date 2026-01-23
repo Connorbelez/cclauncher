@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@/utils/logger";
 
+const MERGE_TREE_USAGE_PATTERN = /unknown option|usage: git merge-tree/i;
+const MERGE_CONFLICT_MARKER_PATTERN = /^(<<<<<<<|=======|>>>>>>>)/m;
+
 /**
  * Git utilities for detecting repos and managing worktrees.
  */
@@ -413,7 +416,7 @@ export async function checkMergeability(
 		if (modernExit === 1) return false;
 
 		const modernErr = await new Response(modernProc.stderr).text();
-		if (!/unknown option|usage: git merge-tree/i.test(modernErr)) {
+		if (!MERGE_TREE_USAGE_PATTERN.test(modernErr)) {
 			return null;
 		}
 
@@ -428,7 +431,7 @@ export async function checkMergeability(
 		if (legacyExit !== 0) {
 			return null;
 		}
-		const hasConflicts = /^(<<<<<<<|=======|>>>>>>>)/m.test(legacyOutput);
+		const hasConflicts = MERGE_CONFLICT_MARKER_PATTERN.test(legacyOutput);
 		return !hasConflicts;
 	} catch {
 		return null;
@@ -530,9 +533,9 @@ export async function getDetachedOriginalBranch(
 					(b) => b !== "main" && b !== "master"
 				);
 				const selected =
-					(nonMainBranch && branches.length > 1
-						? nonMainBranch
-						: mainBranch) || branches[0] || null;
+					(nonMainBranch && branches.length > 1 ? nonMainBranch : mainBranch) ||
+					branches[0] ||
+					null;
 				return selected;
 			}
 		}

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getLaunchTempDir } from "@/utils/launchTempDir";
 import { resetTerminalForChild } from "../utils/terminal";
 import { type Model, resolveEnvRef } from "./store";
 
@@ -325,18 +326,10 @@ export async function launchClaudeCodeBackground(
 		.map((arg) => toShellSingleQuote(arg))
 		.join(" ");
 
-	const ensureLauncherDir = (basePath: string): string => {
-		const launcherDir = path.join(basePath, ".cclauncher");
-		if (!fs.existsSync(launcherDir)) {
-			fs.mkdirSync(launcherDir, { recursive: true });
-		}
-		return launcherDir;
-	};
-
 	// Create a wrapper script that sets environment and runs claude
 	const timestamp = Date.now();
-	const scriptName = `.cclauncher_${model.name.replace(/[^a-zA-Z0-9]/g, "_")}_${timestamp}.sh`;
-	const wrapperScriptPath = path.join(ensureLauncherDir(cwd), scriptName);
+	const scriptName = `claude_launch_${model.name.replace(/[^a-zA-Z0-9]/g, "_")}_${timestamp}.sh`;
+	const wrapperScriptPath = path.join(getLaunchTempDir(cwd), scriptName);
 
 	// Build environment export statements
 	const envExports = Object.entries(env)
@@ -346,9 +339,7 @@ export async function launchClaudeCodeBackground(
 				key.startsWith("CLAUDE") ||
 				key === "API_TIMEOUT_MS"
 		)
-		.map(
-			([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`
-		)
+		.map(([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`)
 		.join("\n");
 
 	const wrapperContent = `#!/bin/bash
@@ -356,6 +347,7 @@ cd "${cwd}"
 
 # Set up environment for Claude Code
 ${envExports}
+export PATH=${toShellSingleQuote(process.env.PATH ?? "")}
 
 # Launch Claude Code
 echo "Starting Claude Code with model: ${model.name}"
@@ -378,7 +370,7 @@ exit $CLAUDE_EXIT
 
 	try {
 		// Write the wrapper script
-		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o755 });
+		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o700 });
 	} catch (err) {
 		return {
 			ok: false,
