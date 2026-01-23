@@ -253,6 +253,7 @@ export function PreLaunchDialog({
 						style={{
 							width: modalWidth - 6,
 							border: true,
+							height: 3,
 							borderStyle: focusedField === "prompt" ? "double" : "rounded",
 							borderColor:
 								focusedField === "prompt"

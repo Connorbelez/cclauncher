@@ -893,7 +893,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 					flexGrow={1}
 					gap={1}
 					justifyContent="center"
-					style={{ width: "100%", paddingLeft: 1, paddingRight: 1 }}
+					style={{ width: "100%", paddingLeft: 1, paddingRight: 1, paddingBottom: 1}}
 				>
 					<ModelSelection
 						isGitRepo={isGitRepo}

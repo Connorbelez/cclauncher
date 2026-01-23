@@ -377,16 +377,16 @@ export function ProjectSettingsPreview({
 
 	return (
 		<box
-			flexDirection="column"
+			// flexDirection="column"
 			style={{
 				width: "100%",
 				border: true,
 				borderStyle: isActive ? "double" : "rounded",
 				borderColor,
-				paddingLeft: 1,
-				paddingRight: 1,
-				paddingTop: 0,
-				paddingBottom: 0,
+				// paddingLeft: 1,
+				// paddingRight: 1,
+				// paddingTop: 0,
+				// paddingBottom: 0,
 			}}
 			title="Project Settings"
 		>

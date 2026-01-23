@@ -6,8 +6,10 @@ import path from "node:path";
 const TEMP_ROOT_DIR = path.join(os.homedir(), ".claude-code-launcher");
 
 function ensureDir(dirPath: string): void {
-	if (!fs.existsSync(dirPath)) {
-		fs.mkdirSync(dirPath, { recursive: true });
+	if (fs.existsSync(dirPath)) {
+		fs.chmodSync(dirPath, 0o700);
+	} else {
+		fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
 	}
 }
 
@@ -26,4 +28,3 @@ export function getLaunchTempDir(workDir: string): string {
 export function getSetupMarkerPath(workDir: string): string {
 	return path.join(getLaunchTempDir(workDir), "setup_done");
 }
-
