@@ -120,11 +120,13 @@ export function PreLaunchDialog({
 		}
 
 		// Normal navigation mode
+		const customTerminalFields: FocusField[] =
+			terminalApp === "custom" ? ["terminalCustom"] : [];
 		const fieldOrder: FocusField[] = [
 			"prompt",
 			"permission",
 			"terminal",
-			...(terminalApp === "custom" ? ["terminalCustom"] : []),
+			...customTerminalFields,
 			"launch",
 			"cancel",
 		];
