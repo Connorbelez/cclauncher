@@ -144,7 +144,7 @@ cclauncher [OPTIONS] [COMMAND]
 ```
 
 #### Commands and modes
-bun run src/index.tsx -- --multi GLM4.7 MiniMaxM2 --prompt "hi" --permission-mode plan
+
 - **(no command)**: launch the TUI for interactive model selection
 - **`--model <name>`**: launch Claude Code with a named model
 - **`--multi <models...>`**: launch multiple models in parallel (separate terminals)
