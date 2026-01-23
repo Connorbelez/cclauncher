@@ -210,14 +210,12 @@ export function ModelSelection(props: ModelSelectionProps) {
 
 	return (
 		<>
-			<box
+			<scrollbox
 				flexDirection="column"
 				flexGrow={1}
-				style={{ width: "100%", height: "100%" }}
-			>
-			<scrollbox
 				style={{
 					width: "100%",
+					height: "100%",
 					flexGrow: 1,
 					border: true,
 					borderStyle: isFocused ? "double" : "rounded",
@@ -261,7 +259,6 @@ export function ModelSelection(props: ModelSelectionProps) {
 					}}
 				/>
 			</scrollbox>
-			</box>
 
 			<ConfirmModal
 				cancelLabel="Cancel"

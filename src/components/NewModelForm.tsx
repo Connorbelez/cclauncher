@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { useFocusState } from "@/hooks/FocusProvider";
+import type { ModelCreateInput } from "@/lib/store";
 import { theme } from "@/theme";
 import { ConfirmModal } from "./ConfirmModal";
 import { FormField } from "./FormField";
@@ -32,12 +33,7 @@ export type SaveModelResult =
 
 export interface NewModelFormProps {
 	onSave: (
-		model: {
-			name: string;
-			description?: string;
-			order?: number;
-			value: Record<string, unknown>;
-		},
+		model: ModelCreateInput,
 		options?: { allowOverwrite?: boolean }
 	) => SaveModelResult;
 }

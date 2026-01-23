@@ -32,6 +32,7 @@ import {
 	getModel,
 	getModelList,
 	type Model,
+	type ModelCreateInput,
 	type ModelsJson,
 	modelSchema,
 	saveModel as saveModelToStore,
@@ -57,6 +58,26 @@ function selectOptionToModel(option: SelectOption & { order?: number }): Model {
 		order: option.order,
 		value: option.value as Model["value"],
 	};
+}
+
+function validateCreateInput(
+	model: ModelCreateInput
+):
+	| { ok: true; data: SelectOption & { order?: number } }
+	| { ok: false; reason: "validation"; message: string } {
+	const validatedModel = modelSchema.safeParse(model);
+	if (!validatedModel.success) {
+		const errorMessages = validatedModel.error.issues.map((err) => {
+			const path = err.path.join(".");
+			return `${path}: ${err.message}`;
+		});
+		return {
+			ok: false,
+			reason: "validation",
+			message: `Validation failed:\n${errorMessages.join("\n")}`,
+		};
+	}
+	return { ok: true, data: modelToSelectOption(validatedModel.data) };
 }
 
 /**
@@ -343,7 +364,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 
 	const handleSaveModel = useCallback(
 		(
-			model: SelectOption,
+			model: SelectOption & { order?: number },
 			originalName?: string,
 			options?: { allowOverwrite?: boolean }
 		): SaveModelResult => {
@@ -408,10 +429,14 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 
 	const handleCreateModel = useCallback(
 		(
-			model: { name: string; description?: string; order?: number; value: Record<string, unknown> },
+			model: ModelCreateInput,
 			options?: { allowOverwrite?: boolean }
 		) => {
-			const result = handleSaveModel(model as unknown as SelectOption, undefined, options);
+			const normalized = validateCreateInput(model);
+			if (!normalized.ok) {
+				return normalized;
+			}
+			const result = handleSaveModel(normalized.data, undefined, options);
 			if (!result.ok) return result;
 
 			// Ensure selected model has the saved/normalized value from store (order assignment, defaults, etc.)
