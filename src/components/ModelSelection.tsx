@@ -1,9 +1,9 @@
 import type { SelectOption } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFocusState } from "@/hooks/FocusProvider";
-import { theme } from "@/theme";
 import { logDebug } from "@/lib/logger";
+import { theme } from "@/theme";
 import { ConfirmModal } from "./ConfirmModal";
 
 export interface ModelSelectionProps {
@@ -53,6 +53,39 @@ export function ModelSelection(props: ModelSelectionProps) {
 		props.onDelete?.(props.selectedModel);
 		closeDeleteConfirm();
 	}, [props, closeDeleteConfirm]);
+
+	useEffect(() => {
+		if (!isDeleteConfirmOpen) {
+			return;
+		}
+
+		const eventTarget = globalThis as unknown as {
+			addEventListener?: (type: string, listener: () => void) => void;
+			removeEventListener?: (type: string, listener: () => void) => void;
+		};
+		const handleBlur = () => {
+			closeDeleteConfirm();
+		};
+
+		if (eventTarget.addEventListener) {
+			eventTarget.addEventListener("blur", handleBlur);
+			eventTarget.addEventListener("focusout", handleBlur);
+		}
+
+		return () => {
+			if (eventTarget.removeEventListener) {
+				eventTarget.removeEventListener("blur", handleBlur);
+				eventTarget.removeEventListener("focusout", handleBlur);
+			}
+			closeDeleteConfirm();
+		};
+	}, [isDeleteConfirmOpen, closeDeleteConfirm]);
+
+	useEffect(() => {
+		if (isDeleteConfirmOpen && !isFocused) {
+			closeDeleteConfirm();
+		}
+	}, [isDeleteConfirmOpen, isFocused, closeDeleteConfirm]);
 
 	const selectedIndex = useMemo(() => {
 		const index = props.models.findIndex(
@@ -235,10 +268,7 @@ export function ModelSelection(props: ModelSelectionProps) {
 			>
 				<select
 					focused={
-						isFocused &&
-						!props.moveMode &&
-						!isModalOpen &&
-						!inPreLaunchDialog
+						isFocused && !props.moveMode && !isModalOpen && !inPreLaunchDialog
 					}
 					onChange={(index) => {
 						const model = props.models[index];

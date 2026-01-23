@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getSetupMarkerPath } from "@/utils/launchTempDir";
 import { launchExternalTerminal } from "../utils/terminalLauncher";
-import { resolveScriptExecution, type ScriptExecution } from "./scriptExecution";
 import {
 	createDetachedWorktree,
 	generateWorktreePath,
@@ -18,6 +17,10 @@ import {
 	type PermissionMode,
 } from "./launcher";
 import { getProjectConfig, saveProjectConfig } from "./projectStore";
+import {
+	resolveScriptExecution,
+	type ScriptExecution,
+} from "./scriptExecution";
 import {
 	getDefaultModel,
 	getModel,
@@ -140,6 +143,8 @@ const PERMISSION_MODE_VALUES = new Set<PermissionMode>([
 	"acceptEdits",
 	"autoAccept",
 ]);
+const SHEBANG_NEWLINE_PATTERN = /\r?\n/;
+const SHEBANG_WHITESPACE_PATTERN = /\s+/;
 
 function parseBooleanFlag(value: string | undefined): boolean | null {
 	const normalized = value?.trim().toLowerCase();
@@ -152,11 +157,11 @@ function parseBooleanFlag(value: string | undefined): boolean | null {
 function getShebangCommand(filePath: string): string[] | null {
 	try {
 		const contents = fs.readFileSync(filePath, "utf8");
-		const [firstLine] = contents.split(/\r?\n/, 1);
+		const [firstLine] = contents.split(SHEBANG_NEWLINE_PATTERN, 1);
 		if (!firstLine?.startsWith("#!")) return null;
 		const shebang = firstLine.slice(2).trim();
 		if (!shebang) return null;
-		return shebang.split(/\s+/);
+		return shebang.split(SHEBANG_WHITESPACE_PATTERN);
 	} catch {
 		return null;
 	}
@@ -279,7 +284,7 @@ function constructCommand(
 				return {
 					type: "error",
 					message:
-						'--spawn-in-terminal expects a boolean value (true/false/1/0/yes/no/on/off)',
+						"--spawn-in-terminal expects a boolean value (true/false/1/0/yes/no/on/off)",
 				};
 			}
 			spawnInTerminal = parsed;

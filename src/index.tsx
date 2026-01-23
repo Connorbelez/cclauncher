@@ -1,6 +1,7 @@
 import { createCliRenderer, type SelectOption } from "@opentui/core";
 import { createRoot, useRenderer } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ZodError } from "zod";
 import { GitWorktreeSelector } from "./components/GitWorktreeSelector";
 import { Header } from "./components/Header";
 import { ModelDetails } from "./components/ModelDetails";
@@ -60,6 +61,14 @@ function selectOptionToModel(option: SelectOption & { order?: number }): Model {
 	};
 }
 
+function formatValidationError(error: ZodError<unknown>): string {
+	const errorMessages = error.issues.map((err) => {
+		const path = err.path.join(".");
+		return `${path}: ${err.message}`;
+	});
+	return `Validation failed:\n${errorMessages.join("\n")}`;
+}
+
 function validateCreateInput(
 	model: ModelCreateInput
 ):
@@ -67,14 +76,10 @@ function validateCreateInput(
 	| { ok: false; reason: "validation"; message: string } {
 	const validatedModel = modelSchema.safeParse(model);
 	if (!validatedModel.success) {
-		const errorMessages = validatedModel.error.issues.map((err) => {
-			const path = err.path.join(".");
-			return `${path}: ${err.message}`;
-		});
 		return {
 			ok: false,
 			reason: "validation",
-			message: `Validation failed:\n${errorMessages.join("\n")}`,
+			message: formatValidationError(validatedModel.error),
 		};
 	}
 	return { ok: true, data: modelToSelectOption(validatedModel.data) };
@@ -150,14 +155,10 @@ const saveModel = (
 	);
 	const validatedModel = modelSchema.safeParse(storeModel);
 	if (!validatedModel.success) {
-		const errorMessages = validatedModel.error.issues.map((err) => {
-			const path = err.path.join(".");
-			return `${path}: ${err.message}`;
-		});
 		return {
 			ok: false,
 			reason: "validation",
-			message: `Validation failed:\n${errorMessages.join("\n")}`,
+			message: formatValidationError(validatedModel.error),
 		};
 	}
 
@@ -219,11 +220,10 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 	>(null);
 	const [pendingUseWorktree, setPendingUseWorktree] = useState(false);
 	const projectTerminalApp = useMemo(() => {
-		if (!gitRepoRoot || !showPreLaunchDialog) return undefined;
+		if (!(gitRepoRoot && showPreLaunchDialog)) return undefined;
 		const result = getProjectConfig(gitRepoRoot);
 		return result.ok ? result.data?.terminalApp : undefined;
 	}, [gitRepoRoot, showPreLaunchDialog]);
-
 
 	const renderer = useRenderer();
 	const isGitRepo = gitRepoRoot !== null;
@@ -391,7 +391,8 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 					next[existingIndex] = updatedModel;
 					if (originalName && originalName !== model.name) {
 						next = next.filter(
-							(entry, index) => index === existingIndex || entry.name !== model.name
+							(entry, index) =>
+								index === existingIndex || entry.name !== model.name
 						);
 					}
 				} else {
@@ -412,7 +413,7 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 			});
 
 			setSelectedModelIds((prev) => {
-				if (!prev.size || !originalName || originalName === model.name) {
+				if (!(prev.size && originalName) || originalName === model.name) {
 					return prev;
 				}
 				const next = new Set(prev);
@@ -424,14 +425,11 @@ function App({ gitRepoRoot }: { gitRepoRoot: string | null }) {
 
 			return result;
 		},
-		[setModelsState, setSelectedModel, setSelectedModelIds]
+		[]
 	);
 
 	const handleCreateModel = useCallback(
-		(
-			model: ModelCreateInput,
-			options?: { allowOverwrite?: boolean }
-		) => {
+		(model: ModelCreateInput, options?: { allowOverwrite?: boolean }) => {
 			const normalized = validateCreateInput(model);
 			if (!normalized.ok) {
 				return normalized;

@@ -196,7 +196,7 @@ export function saveProjectConfig(
 		normalizedConfig.postWorktreeScript !== undefined &&
 		!normalizedConfig.postWorktreeScript.trim()
 	) {
-		delete normalizedConfig.postWorktreeScript;
+		normalizedConfig.postWorktreeScript = undefined;
 	}
 
 	const hasConfigValues =

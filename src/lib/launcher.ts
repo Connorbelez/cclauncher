@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resetTerminalForChild } from "../utils/terminal";
 import { getLaunchTempDir } from "@/utils/launchTempDir";
+import { resetTerminalForChild } from "../utils/terminal";
 import { type Model, resolveEnvRef } from "./store";
 
 // Lazy-load bun-pty; may fail on some platforms
@@ -339,12 +339,10 @@ export async function launchClaudeCodeBackground(
 				key.startsWith("CLAUDE") ||
 				key === "API_TIMEOUT_MS"
 		)
-		.map(
-			([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`
-		)
+		.map(([key, value]) => `export ${key}=${toShellSingleQuote(value ?? "")}`)
 		.join("\n");
 
-const wrapperContent = `#!/bin/bash
+	const wrapperContent = `#!/bin/bash
 cd "${cwd}"
 
 # Set up environment for Claude Code
@@ -372,7 +370,7 @@ exit $CLAUDE_EXIT
 
 	try {
 		// Write the wrapper script
-		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o755 });
+		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o700 });
 	} catch (err) {
 		return {
 			ok: false,
@@ -384,7 +382,7 @@ exit $CLAUDE_EXIT
 	// Launch in a new terminal window
 	if (platform === "darwin") {
 		try {
-		const proc = Bun.spawn(["open", "-a", terminalApp, wrapperScriptPath], {
+			const proc = Bun.spawn(["open", "-a", terminalApp, wrapperScriptPath], {
 				stderr: "pipe",
 				stdout: "ignore",
 			});

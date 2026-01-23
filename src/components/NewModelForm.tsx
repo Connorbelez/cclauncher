@@ -105,6 +105,44 @@ export function NewModelForm({ onSave }: NewModelFormProps) {
 		setModalOpen(false);
 	}, [setModalOpen]);
 
+	const closeAllModals = useCallback(() => {
+		closeConfirm();
+		closeOverwriteConfirm();
+	}, [closeConfirm, closeOverwriteConfirm]);
+
+	useEffect(() => {
+		if (!(isConfirmOpen || isOverwriteConfirmOpen)) {
+			return;
+		}
+
+		const eventTarget = globalThis as unknown as {
+			addEventListener?: (type: string, listener: () => void) => void;
+			removeEventListener?: (type: string, listener: () => void) => void;
+		};
+		const handleBlur = () => {
+			closeAllModals();
+		};
+
+		if (eventTarget.addEventListener) {
+			eventTarget.addEventListener("blur", handleBlur);
+			eventTarget.addEventListener("focusout", handleBlur);
+		}
+
+		return () => {
+			if (eventTarget.removeEventListener) {
+				eventTarget.removeEventListener("blur", handleBlur);
+				eventTarget.removeEventListener("focusout", handleBlur);
+			}
+			closeAllModals();
+		};
+	}, [isConfirmOpen, isOverwriteConfirmOpen, closeAllModals]);
+
+	useEffect(() => {
+		if ((isConfirmOpen || isOverwriteConfirmOpen) && !isFocused) {
+			closeAllModals();
+		}
+	}, [isConfirmOpen, isOverwriteConfirmOpen, isFocused, closeAllModals]);
+
 	const handleSave = useCallback(
 		(allowOverwrite: boolean): SaveModelResult => {
 			setErrorMessage(null);
@@ -223,11 +261,7 @@ export function NewModelForm({ onSave }: NewModelFormProps) {
 
 	return (
 		<>
-			<box
-				flexDirection="column"
-				flexGrow={1}
-				style={{ width: "100%" }}
-			>
+			<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
 				<scrollbox
 					style={{
 						width: "100%",
@@ -255,180 +289,180 @@ export function NewModelForm({ onSave }: NewModelFormProps) {
 					title="Create New Model"
 				>
 					<box flexDirection="column" gap={1} padding={1}>
-					<text style={{ fg: theme.colors.text.secondary, marginBottom: 1 }}>
-						Fill in the details below to add a new model configuration.
-					</text>
+						<text style={{ fg: theme.colors.text.secondary, marginBottom: 1 }}>
+							Fill in the details below to add a new model configuration.
+						</text>
 
-					{/* Error Message Display */}
-					{errorMessage && (
-						<box
-							flexDirection="column"
-							style={{
-								border: true,
-								borderStyle: "rounded",
-								borderColor: "#ef4444", // Red border for errors
-								backgroundColor: "#1f1f1f", // Dark background
-								paddingLeft: 1,
-								paddingRight: 1,
-								paddingTop: 1,
-								paddingBottom: 1,
-								marginBottom: 1,
-							}}
-						>
-							<text
-								attributes={TextAttributes.BOLD}
-								style={{ fg: "#ef4444", marginBottom: 1 }}
+						{/* Error Message Display */}
+						{errorMessage && (
+							<box
+								flexDirection="column"
+								style={{
+									border: true,
+									borderStyle: "rounded",
+									borderColor: "#ef4444", // Red border for errors
+									backgroundColor: "#1f1f1f", // Dark background
+									paddingLeft: 1,
+									paddingRight: 1,
+									paddingTop: 1,
+									paddingBottom: 1,
+									marginBottom: 1,
+								}}
 							>
-								Error
-							</text>
-							{errorMessage.split("\n").map((line, idx) => (
 								<text
-									key={`${idx}-${line}`}
-									style={{ fg: theme.colors.text.primary }}
+									attributes={TextAttributes.BOLD}
+									style={{ fg: "#ef4444", marginBottom: 1 }}
 								>
-									{line}
+									Error
 								</text>
-							))}
+								{errorMessage.split("\n").map((line, idx) => (
+									<text
+										key={`${idx}-${line}`}
+										style={{ fg: theme.colors.text.primary }}
+									>
+										{line}
+									</text>
+								))}
+							</box>
+						)}
+
+						{/* Model Identity Section */}
+						<box flexDirection="column" gap={0}>
+							<text
+								attributes={TextAttributes.UNDERLINE}
+								style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+							>
+								Model Identity
+							</text>
+
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 0}
+								label="Name *"
+								onChange={(value) => {
+									setNewModelName(value);
+									// Clear error when user starts typing
+									if (errorMessage) {
+										setErrorMessage(null);
+									}
+								}}
+								placeholder="e.g. My Custom Model"
+								value={newModelName}
+							/>
+
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 1}
+								label="Description"
+								onChange={(value) => setNewModelDescription(value)}
+								placeholder="Brief description of usage"
+								value={newModelDescription}
+							/>
 						</box>
-					)}
 
-					{/* Model Identity Section */}
-					<box flexDirection="column" gap={0}>
-						<text
-							attributes={TextAttributes.UNDERLINE}
-							style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
-						>
-							Model Identity
-						</text>
+						{/* API Configuration Section */}
+						<box flexDirection="column" gap={0} marginTop={1}>
+							<text
+								attributes={TextAttributes.UNDERLINE}
+								style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
+							>
+								API Configuration
+							</text>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 0}
-							label="Name *"
-							onChange={(value) => {
-								setNewModelName(value);
-								// Clear error when user starts typing
-								if (errorMessage) {
-									setErrorMessage(null);
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 2}
+								label="Base URL"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_BASE_URL: value,
+									})
 								}
-							}}
-							placeholder="e.g. My Custom Model"
-							value={newModelName}
-						/>
+								placeholder="https://api.anthropic.com"
+								value={newModelValue.ANTHROPIC_BASE_URL}
+							/>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 1}
-							label="Description"
-							onChange={(value) => setNewModelDescription(value)}
-							placeholder="Brief description of usage"
-							value={newModelDescription}
-						/>
-					</box>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 3}
+								isPassword={true}
+								label="Auth Token"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_AUTH_TOKEN: value,
+									})
+								}
+								value={newModelValue.ANTHROPIC_AUTH_TOKEN}
+							/>
 
-					{/* API Configuration Section */}
-					<box flexDirection="column" gap={0} marginTop={1}>
-						<text
-							attributes={TextAttributes.UNDERLINE}
-							style={{ fg: theme.colors.text.muted, marginBottom: 1 }}
-						>
-							API Configuration
-						</text>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 4}
+								label="Model"
+								onChange={(value) =>
+									setNewModelValue({ ...newModelValue, ANTHROPIC_MODEL: value })
+								}
+								value={newModelValue.ANTHROPIC_MODEL}
+							/>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 2}
-							label="Base URL"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_BASE_URL: value,
-								})
-							}
-							placeholder="https://api.anthropic.com"
-							value={newModelValue.ANTHROPIC_BASE_URL}
-						/>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 5}
+								label="Small Fast Model"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_SMALL_FAST_MODEL: value,
+									})
+								}
+								placeholder="e.g. claude-3-haiku-20240307"
+								value={newModelValue.ANTHROPIC_SMALL_FAST_MODEL}
+							/>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 3}
-							isPassword={true}
-							label="Auth Token"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_AUTH_TOKEN: value,
-								})
-							}
-							value={newModelValue.ANTHROPIC_AUTH_TOKEN}
-						/>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 6}
+								label="Sonnet Model"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_DEFAULT_SONNET_MODEL: value,
+									})
+								}
+								placeholder="e.g. claude-3-5-sonnet-20240620"
+								value={newModelValue.ANTHROPIC_DEFAULT_SONNET_MODEL}
+							/>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 4}
-							label="Model"
-							onChange={(value) =>
-								setNewModelValue({ ...newModelValue, ANTHROPIC_MODEL: value })
-							}
-							value={newModelValue.ANTHROPIC_MODEL}
-						/>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 7}
+								label="Opus Model"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_DEFAULT_OPUS_MODEL: value,
+									})
+								}
+								placeholder="e.g. claude-3-opus-20240229"
+								value={newModelValue.ANTHROPIC_DEFAULT_OPUS_MODEL}
+							/>
 
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 5}
-							label="Small Fast Model"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_SMALL_FAST_MODEL: value,
-								})
-							}
-							placeholder="e.g. claude-3-haiku-20240307"
-							value={newModelValue.ANTHROPIC_SMALL_FAST_MODEL}
-						/>
-
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 6}
-							label="Sonnet Model"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_DEFAULT_SONNET_MODEL: value,
-								})
-							}
-							placeholder="e.g. claude-3-5-sonnet-20240620"
-							value={newModelValue.ANTHROPIC_DEFAULT_SONNET_MODEL}
-						/>
-
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 7}
-							label="Opus Model"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_DEFAULT_OPUS_MODEL: value,
-								})
-							}
-							placeholder="e.g. claude-3-opus-20240229"
-							value={newModelValue.ANTHROPIC_DEFAULT_OPUS_MODEL}
-						/>
-
-						<FormField
-							editMode={true}
-							isFocused={activeFieldIndex === 8}
-							label="Haiku Model"
-							onChange={(value) =>
-								setNewModelValue({
-									...newModelValue,
-									ANTHROPIC_DEFAULT_HAIKU_MODEL: value,
-								})
-							}
-							placeholder="e.g. claude-3-haiku-20240307"
-							value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL}
-						/>
-					</box>
+							<FormField
+								editMode={true}
+								isFocused={activeFieldIndex === 8}
+								label="Haiku Model"
+								onChange={(value) =>
+									setNewModelValue({
+										...newModelValue,
+										ANTHROPIC_DEFAULT_HAIKU_MODEL: value,
+									})
+								}
+								placeholder="e.g. claude-3-haiku-20240307"
+								value={newModelValue.ANTHROPIC_DEFAULT_HAIKU_MODEL}
+							/>
+						</box>
 					</box>
 				</scrollbox>
 			</box>

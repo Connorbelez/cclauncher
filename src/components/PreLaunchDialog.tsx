@@ -81,13 +81,7 @@ export function PreLaunchDialog({
 			permissionMode,
 			terminalApp: terminalSelection.trim() || undefined,
 		});
-	}, [
-		prompt,
-		permissionIndex,
-		terminalApp,
-		customTerminalPath,
-		onLaunch,
-	]);
+	}, [prompt, permissionIndex, terminalApp, customTerminalPath, onLaunch]);
 
 	const handleCancel = useCallback(() => {
 		onCancel();
@@ -179,13 +173,13 @@ export function PreLaunchDialog({
 	if (!isOpen) return null;
 
 	// Modal dimensions
-	const modalWidth = 60;
+	const modalWidth = Math.min(60, Math.max(30, width - 4));
 	const modalHeight =
 		(useWorktree ? 19 : 18) + (terminalApp === "custom" ? 4 : 0);
 
 	// Center the modal
-	const left = Math.floor((width - modalWidth) / 2);
-	const top = Math.floor((height - modalHeight) / 2);
+	const left = Math.max(0, Math.floor((width - modalWidth) / 2));
+	const top = Math.max(0, Math.floor((height - modalHeight) / 2));
 
 	const modelCount = selectedModels.length;
 	const modelNames =
@@ -268,6 +262,8 @@ export function PreLaunchDialog({
 								focusedField === "prompt"
 									? theme.colors.surfaceHighlight
 									: theme.colors.background,
+							paddingLeft: 1,
+							paddingRight: 1,
 						}}
 					>
 						<input
@@ -275,7 +271,7 @@ export function PreLaunchDialog({
 							onInput={setPrompt}
 							placeholder="(optional) Enter a prompt for all instances..."
 							style={{
-								width: modalWidth - 8,
+								width: "100%",
 							}}
 							value={prompt}
 						/>

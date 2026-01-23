@@ -55,7 +55,10 @@ export async function launchExternalTerminal(
 
 	// Create a wrapper script that runs the user script and signals completion
 	const markerFile = getSetupMarkerPath(cwd);
-	const wrapperScriptPath = path.join(getLaunchTempDir(cwd), "setup_wrapper.sh");
+	const wrapperScriptPath = path.join(
+		getLaunchTempDir(cwd),
+		"setup_wrapper.sh"
+	);
 
 	// Ensure marker is gone
 	if (fs.existsSync(markerFile)) {
@@ -67,7 +70,7 @@ export async function launchExternalTerminal(
 	}
 
 	const bashSingleQuote = (value: string): string =>
-		`'${value.replace(/'/g, `'\"'\"'`)}'`;
+		`'${value.replace(/'/g, `'"'"'`)}'`;
 	const resolvedScript =
 		script.kind === "file" ? script.resolvedPath : script.command;
 	const scriptLabel = script.raw || resolvedScript;
@@ -109,7 +112,7 @@ exit $EXIT_CODE
 `;
 
 	try {
-		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o755 });
+		fs.writeFileSync(wrapperScriptPath, wrapperContent, { mode: 0o700 });
 	} catch (err) {
 		console.error("Failed to write wrapper script:", err);
 		return false;

@@ -74,7 +74,7 @@ export function ProjectSettings({
 	useEffect(() => {
 		if (!error) return;
 		setError(null);
-	}, [scriptPath, spawnInTerminal, terminalApp, customTerminalPath]);
+	}, [error]);
 
 	// Clear success message after a delay
 	useEffect(() => {
@@ -108,7 +108,11 @@ export function ProjectSettings({
 
 		const trimmedScript = scriptPath.trim();
 		const looksLikePath = looksLikeFilePath(trimmedScript);
-		if (trimmedScript && looksLikePath && !scriptExists(gitRepoRoot, trimmedScript)) {
+		if (
+			trimmedScript &&
+			looksLikePath &&
+			!scriptExists(gitRepoRoot, trimmedScript)
+		) {
 			setError(`File not found: ${trimmedScript}`);
 			return;
 		}
@@ -146,7 +150,6 @@ export function ProjectSettings({
 		spawnInTerminal,
 		terminalApp,
 		customTerminalPath,
-		onSave,
 	]);
 
 	const handleCancel = useCallback(() => {

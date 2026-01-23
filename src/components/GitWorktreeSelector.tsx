@@ -326,11 +326,17 @@ export function GitWorktreeSelector({
 	// Empty state: no worktrees at all (shouldn't happen - main always exists)
 	if (worktrees.length === 0) {
 		return (
-			<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
+			<box
+				flexDirection="column"
+				flexGrow={1}
+				style={{ width: "100%", height: "100%" }}
+			>
 				<scrollbox
 					style={{
 						width: "100%",
 						flexGrow: 1,
+						flexShrink: 1,
+						minHeight: 0,
 						border: true,
 						borderStyle: isActive ? "double" : "rounded",
 						borderColor,
@@ -349,17 +355,25 @@ export function GitWorktreeSelector({
 						</text>
 					</box>
 				</scrollbox>
-				<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
+				<box style={{ flexShrink: 0 }}>
+					<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
+				</box>
 			</box>
 		);
 	}
 
 	return (
-		<box flexDirection="column" flexGrow={1} style={{ width: "100%" }}>
+		<box
+			flexDirection="column"
+			flexGrow={1}
+			style={{ width: "100%", height: "100%" }}
+		>
 			<scrollbox
 				style={{
 					width: "100%",
 					flexGrow: 1,
+					flexShrink: 1,
+					minHeight: 0,
 					border: true,
 					borderStyle: isActive ? "double" : "rounded",
 					borderColor,
@@ -403,7 +417,7 @@ export function GitWorktreeSelector({
 			</scrollbox>
 
 			{/* Project settings preview */}
-			<box style={{ marginTop: 1 }}>
+			<box style={{ marginTop: 1, flexShrink: 0 }}>
 				<ProjectSettingsPreview gitRepoRoot={gitRepoRoot} />
 			</box>
 

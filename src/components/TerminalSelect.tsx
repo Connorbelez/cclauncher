@@ -56,6 +56,7 @@ export function TerminalSelect({
 	);
 
 	useKeyboard((key) => {
+		if (customPathFocused) return;
 		if (!isFocused) return;
 
 		const name = key.name || "";

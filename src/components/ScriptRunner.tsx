@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -136,10 +135,7 @@ export function ScriptRunner({
 					if (!scriptIdentifier) {
 						setExitCode(-1);
 						setState("error");
-						setOutput((p) => [
-							...p,
-							"Script not configured.",
-						]);
+						setOutput((p) => [...p, "Script not configured."]);
 						return;
 					}
 
@@ -236,6 +232,8 @@ export function ScriptRunner({
 		workingDirectory,
 		spawnInTerminal,
 		terminalApp,
+		scriptExecution.command,
+		scriptExecution,
 	]);
 
 	// Auto-proceed after success delay

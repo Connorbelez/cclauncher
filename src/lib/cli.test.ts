@@ -318,11 +318,7 @@ describe("parseArgs", () => {
 		});
 
 		it("should return project-config-set for --terminal-app", () => {
-			const result = parseArgs([
-				"--project-config",
-				"--terminal-app",
-				"Warp",
-			]);
+			const result = parseArgs(["--project-config", "--terminal-app", "Warp"]);
 			expect(result).toEqual({
 				type: "project-config-set",
 				scriptPath: undefined,
