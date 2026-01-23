@@ -384,7 +384,7 @@ exit $CLAUDE_EXIT
 	// Launch in a new terminal window
 	if (platform === "darwin") {
 		try {
-			const proc = Bun.spawn(["open", "-a", terminalApp, wrapperScriptPath], {
+		const proc = Bun.spawn(["open", "-a", terminalApp, wrapperScriptPath], {
 				stderr: "pipe",
 				stdout: "ignore",
 			});

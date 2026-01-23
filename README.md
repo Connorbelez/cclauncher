@@ -52,8 +52,8 @@ How to use it:
 Configure a per-repo script (install deps, run migrations, etc.) that runs automatically after worktree creation. You can also run it in an external terminal if you prefer.
 
 How to use it:
-- Run `claude-launch --project-config --set-script ./setup.sh`
-- Optional: `claude-launch --project-config --spawn-in-terminal true --terminal-app Warp`
+- Run `cclauncher --project-config --set-script ./setup.sh`
+- Optional: `cclauncher --project-config --spawn-in-terminal true --terminal-app Warp`
 
 ![Project settings](docs/screenshots/project-settings.png)
 
@@ -79,7 +79,7 @@ npm install -g claude-model-launcher
 ### Run
 
 ```bash
-claude-launch
+cclauncher
 ```
 
 On first run, CCLauncher creates your model store at `~/.claude-model-launcher/models.json` with a couple starter configs you can edit or delete.
@@ -109,19 +109,19 @@ Inside the TUI you can:
 - **List models**:
 
 ```bash
-claude-launch --list
+cclauncher --list
 ```
 
 - **Launch a model**:
 
 ```bash
-claude-launch --model mymodel
+cclauncher --model mymodel
 ```
 
 - **Add a model (scriptable)**:
 
 ```bash
-claude-launch --add --name mymodel \
+cclauncher --add --name mymodel \
   --endpoint https://api.anthropic.com \
   --token env:ANTHROPIC_API_KEY \
   --model-id claude-opus-4-5-20251101
@@ -130,7 +130,7 @@ claude-launch --add --name mymodel \
 - **Multi-launch (CLI)**:
 
 ```bash
-claude-launch --multi minimax openrouter \
+cclauncher --multi minimax openrouter \
   --prompt "Compare answers" \
   --permission-mode plan
 ```
@@ -140,11 +140,11 @@ claude-launch --multi minimax openrouter \
 #### Usage
 
 ```bash
-claude-launch [OPTIONS] [COMMAND]
+cclauncher [OPTIONS] [COMMAND]
 ```
 
 #### Commands and modes
-
+bun run src/index.tsx -- --multi GLM4.7 MiniMaxM2 --prompt "hi" --permission-mode plan
 - **(no command)**: launch the TUI for interactive model selection
 - **`--model <name>`**: launch Claude Code with a named model
 - **`--multi <models...>`**: launch multiple models in parallel (separate terminals)
@@ -156,7 +156,7 @@ claude-launch [OPTIONS] [COMMAND]
 - **`--run-script`**: run the configured setup script in the current directory
 - **`--help`**: show help
 - **`--version`**: show version
-- **Positional model name**: `claude-launch mymodel` is equivalent to `--model mymodel`
+- **Positional model name**: `cclauncher mymodel` is equivalent to `--model mymodel`
 
 #### Options for `--add`
 
@@ -183,23 +183,23 @@ claude-launch [OPTIONS] [COMMAND]
 #### Examples
 
 ```bash
-claude-launch
-claude-launch minimax
-claude-launch --model minimax
-claude-launch --list
-claude-launch --add --name mymodel \
+cclauncher
+cclauncher minimax
+cclauncher --model minimax
+cclauncher --list
+cclauncher --add --name mymodel \
   --endpoint https://api.example.com \
   --token env:MY_API_TOKEN \
   --model-id claude-opus-4-5-20251101
-claude-launch --multi minimax openrouter \
+cclauncher --multi minimax openrouter \
   --prompt "Compare answers" \
   --permission-mode plan
-claude-launch --worktree
-claude-launch --worktree-list
-claude-launch --project-config --show
-claude-launch --project-config --set-script ./scripts/setup.sh
-claude-launch --project-config --spawn-in-terminal true --terminal-app Warp
-claude-launch --run-script
+cclauncher --worktree
+cclauncher --worktree-list
+cclauncher --project-config --show
+cclauncher --project-config --set-script ./scripts/setup.sh
+cclauncher --project-config --spawn-in-terminal true --terminal-app Warp
+cclauncher --run-script
 ```
 
 ### Keyboard shortcuts (cheat sheet)
