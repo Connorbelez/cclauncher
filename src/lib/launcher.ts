@@ -476,8 +476,10 @@ function launchWithPty(
 		process.stdout.write(data);
 	});
 
-	// Forward stdin to PTY
 	const onStdinData = (data: Buffer) => {
+		// Forward input directly to PTY
+		// Using default toString() (utf8) preserves multibyte characters correctly
+		// when passed to pty.write, unlike latin1 which can cause double-encoding.
 		pty.write(data.toString());
 	};
 	process.stdin.on("data", onStdinData);
