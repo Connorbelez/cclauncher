@@ -476,9 +476,26 @@ function launchWithPty(
 		process.stdout.write(data);
 	});
 
-	// Forward stdin to PTY
+	// Forward stdin to PTY with proper handling for rapid keystrokes
+	// Use a write queue to ensure all input is processed in order
+	let writeQueue: string[] = [];
+	let isWriting = false;
+
+	const flushQueue = () => {
+		if (isWriting || writeQueue.length === 0) return;
+		isWriting = true;
+		// Process all queued input at once to preserve rapid keystroke sequences
+		const data = writeQueue.join("");
+		writeQueue = [];
+		pty.write(data);
+		isWriting = false;
+	};
+
 	const onStdinData = (data: Buffer) => {
-		pty.write(data.toString());
+		// Convert to string using 'latin1' to preserve all byte values
+		// This handles special keys and escape sequences correctly
+		writeQueue.push(data.toString("latin1"));
+		flushQueue();
 	};
 	process.stdin.on("data", onStdinData);
 
