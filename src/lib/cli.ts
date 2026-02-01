@@ -81,7 +81,7 @@ const VERSION = getPackageVersion();
 const NUMERIC_VALUE_RE = /^-?\d+(\.\d+)?$/;
 
 const HELP_TEXT = `
-CCLauncher - Launch Claude Code with custom model configurations
+claude-launch - Launch Claude Code with custom model configurations
 
 USAGE:
   claude-launch [OPTIONS] [COMMAND]
