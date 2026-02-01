@@ -1,5 +1,11 @@
 # claude-model-launcher
 
+## 1.2.2
+
+### Patch Changes
+
+- fix: proper tui buffer flush
+
 ## 1.2.1
 
 ### Patch Changes
